@@ -8,6 +8,7 @@ class HistoryPanel: NSPanel {
 
     static let cardSpacing: CGFloat = 4
     static let panelPadding: CGFloat = 4
+    static let arrowZoneHeight: CGFloat = 30
 
     private var zoomObserver: NSObjectProtocol?
     private var lastItemCount: Int = 0
@@ -51,6 +52,7 @@ class HistoryPanel: NSPanel {
         )
         let hostingView = NSHostingView(rootView: AnyView(panelView))
         contentView = hostingView
+        scrollState.panelContentView = hostingView
         log.info("Panel", "HistoryPanel initialized (activating, floating)", emoji: "🏠")
     }
 
@@ -65,7 +67,7 @@ class HistoryPanel: NSPanel {
         } else {
             let cardsHeight = CGFloat(itemCount) * ClipboardEntryRow.baseHeight * zoom
             let spacingHeight = CGFloat(max(0, itemCount - 1)) * Self.cardSpacing * zoom
-            height = cardsHeight + spacingHeight + Self.panelPadding * 2 * zoom
+            height = cardsHeight + spacingHeight + Self.panelPadding * 2 * zoom + Self.arrowZoneHeight
         }
 
         let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
@@ -80,7 +82,6 @@ class HistoryPanel: NSPanel {
         log.debug("Panel", "Panel closing", emoji: "🔽")
         super.close()
         scrollState.stopScrolling()
-        scrollState.scrollOffset = 0
         scrollState.selectedIndex = nil
     }
 }

@@ -34,7 +34,12 @@ class MouseTrackingNSView: NSView {
     }
 
     override func mouseExited(with event: NSEvent) {
-        log.debug("Mouse", "Mouse exited tracking area", emoji: "🖱️")
+        let location = convert(event.locationInWindow, from: nil)
+        if bounds.contains(location) {
+            log.debug("Mouse", "Spurious mouseExited ignored (mouse still in bounds at \(Int(location.x)),\(Int(location.y)))", emoji: "🖱️")
+            return
+        }
+        log.debug("Mouse", "Mouse exited tracking area at \(Int(location.x)),\(Int(location.y))", emoji: "🖱️")
         onMouseExit?()
     }
 
@@ -56,6 +61,7 @@ struct MouseTrackingOverlay: NSViewRepresentable {
             scrollState.selectByMousePosition(point.y, viewHeight: view.bounds.height)
         }
         view.onMouseExit = { [scrollState] in
+            log.debug("Mouse", "Mouse exited → stopping scroll, clearing selection", emoji: "🖱️")
             scrollState.stopScrolling()
             scrollState.selectedIndex = nil
         }

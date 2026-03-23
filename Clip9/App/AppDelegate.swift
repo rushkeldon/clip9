@@ -8,7 +8,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var historyPanel: HistoryPanel?
     private var globalEventMonitor: Any?
     private var localEventMonitor: Any?
-    private var scrollEventMonitor: Any?
     private var firstRunBubble = FirstRunBubble()
     let clipboardMonitor = ClipboardMonitor()
 
@@ -21,7 +20,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupHistoryPanel()
         setupGlobalEventMonitor()
         setupKeyboardShortcuts()
-        setupScrollMonitor()
         clipboardMonitor.start()
         syncSettingsToComponents()
         observeSettingsChanges()
@@ -207,15 +205,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         log.debug("App", "Local keyboard monitor installed", emoji: "⌨️")
     }
 
-    private func setupScrollMonitor() {
-        scrollEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            guard let self, let panel = self.historyPanel, panel.isVisible else { return event }
-            panel.scrollState.applyScrollDelta(-event.scrollingDeltaY)
-            return nil
-        }
-        log.debug("App", "Scroll event monitor installed", emoji: "🖱️")
-    }
-
     private func restoreSelectedEntry() {
         guard let panel = historyPanel,
               let selectedIndex = panel.scrollState.selectedIndex,
@@ -396,9 +385,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSEvent.removeMonitor(monitor)
         }
         if let monitor = localEventMonitor {
-            NSEvent.removeMonitor(monitor)
-        }
-        if let monitor = scrollEventMonitor {
             NSEvent.removeMonitor(monitor)
         }
         for observer in settingsObservers {

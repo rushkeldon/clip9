@@ -2,6 +2,13 @@ import SwiftUI
 
 private let log = LogService.shared
 
+struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct CardGeometryItem: Equatable {
     let index: Int
     let minY: CGFloat
@@ -22,22 +29,28 @@ struct HistoryPanelView: View {
     var onDelete: ((ClipboardEntry) -> Void)?
 
     @AppStorage("baseZoomLevel") private var baseZoomLevel = 1.0
-    @State private var showScrollArrow = false
 
     private let cardSpacing: CGFloat = 4
     private let panelPadding: CGFloat = 4
-    private let arrowZoneHeight: CGFloat = 30
+    private var arrowZoneHeight: CGFloat { HistoryPanel.arrowZoneHeight }
 
     var body: some View {
-        Group {
-            if monitor.history.isEmpty {
-                emptyState
-            } else {
-                cardList
+        ZStack(alignment: .bottom) {
+            Group {
+                if monitor.history.isEmpty {
+                    emptyState
+                } else {
+                    cardList
+                }
+            }
+
+            if !monitor.history.isEmpty && scrollState.canScrollDown {
+                scrollArrow
             }
         }
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(MouseTrackingOverlay(scrollState: scrollState))
         .ignoresSafeArea()
     }
 
@@ -57,75 +70,88 @@ struct HistoryPanelView: View {
 
     private var cardList: some View {
         GeometryReader { geo in
-            VStack(spacing: cardSpacing * baseZoomLevel) {
-                ForEach(Array(monitor.history.enumerated()), id: \.element.id) { index, entry in
-                    ClipboardEntryRow(entry: entry, zoom: baseZoomLevel, isSelected: scrollState.selectedIndex == index)
-                        .contentShape(Rectangle())
-                        .background(
-                            GeometryReader { cardGeo in
-                                Color.clear.preference(
-                                    key: CardGeometryKey.self,
-                                    value: [CardGeometryItem(
-                                        index: index,
-                                        minY: cardGeo.frame(in: .named("cardStack")).minY,
-                                        height: cardGeo.size.height
-                                    )]
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: cardSpacing * baseZoomLevel) {
+                        ForEach(Array(monitor.history.enumerated()), id: \.element.id) { index, entry in
+                            ClipboardEntryRow(entry: entry, zoom: baseZoomLevel, isSelected: scrollState.selectedIndex == index)
+                                .contentShape(Rectangle())
+                                .id(entry.id)
+                                .background(
+                                    GeometryReader { cardGeo in
+                                        Color.clear.preference(
+                                            key: CardGeometryKey.self,
+                                            value: [CardGeometryItem(
+                                                index: index,
+                                                minY: cardGeo.frame(in: .named("cardStack")).minY,
+                                                height: cardGeo.size.height
+                                            )]
+                                        )
+                                    }
                                 )
-                            }
-                        )
-                        .onTapGesture {
-                            log.info("UI", "Entry tapped: \(entry.id) (concealed=\(entry.isConcealed))", emoji: "👆")
-                            onRestore?(entry)
+                                .onTapGesture {
+                                    log.info("UI", "Entry tapped: \(entry.id) (concealed=\(entry.isConcealed))", emoji: "👆")
+                                    onRestore?(entry)
+                                }
+                                .contextMenu {
+                                    Button {
+                                        log.info("UI", "Context menu → Copy: \(entry.id)", emoji: "📋")
+                                        onRestore?(entry)
+                                    } label: {
+                                        Label("Copy", systemImage: "doc.on.doc")
+                                    }
+                                    Button(role: .destructive) {
+                                        log.info("UI", "Context menu → Delete: \(entry.id)", emoji: "🗑️")
+                                        onDelete?(entry)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                         }
-                        .contextMenu {
-                            Button {
-                                log.info("UI", "Context menu → Copy: \(entry.id)", emoji: "📋")
-                                onRestore?(entry)
-                            } label: {
-                                Label("Copy", systemImage: "doc.on.doc")
-                            }
-                            Button(role: .destructive) {
-                                log.info("UI", "Context menu → Delete: \(entry.id)", emoji: "🗑️")
-                                onDelete?(entry)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
+                    }
+                    .coordinateSpace(name: "cardStack")
+                    .padding(panelPadding * baseZoomLevel)
+                    .padding(.bottom, arrowZoneHeight)
+                    .background(
+                        GeometryReader { contentGeo in
+                            Color.clear.preference(
+                                key: ScrollOffsetKey.self,
+                                value: -contentGeo.frame(in: .named("scrollArea")).minY
+                            )
                         }
+                    )
                 }
-            }
-            .coordinateSpace(name: "cardStack")
-            .padding(panelPadding * baseZoomLevel)
-            .frame(maxWidth: .infinity)
-            .fixedSize(horizontal: false, vertical: true)
-            .offset(y: -scrollState.scrollOffset)
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
-            .clipped()
-            .overlay(alignment: .bottom) {
-                if showScrollArrow {
-                    scrollArrow
+                .coordinateSpace(name: "scrollArea")
+                .scrollIndicators(.never)
+                .onPreferenceChange(ScrollOffsetKey.self) { offset in
+                    if abs(offset - scrollState.scrollOffset) > 1 {
+                        log.debug("Scroll", "scrollOffset changed: \(Int(scrollState.scrollOffset)) → \(Int(offset))", emoji: "📏")
+                    }
+                    scrollState.scrollOffset = offset
                 }
-            }
-            .overlay(MouseTrackingOverlay(scrollState: scrollState))
-            .onPreferenceChange(CardGeometryKey.self) { items in
-                let sorted = items.sorted { $0.index < $1.index }
-                scrollState.cardOffsets = sorted.map { $0.minY }
-                scrollState.cardHeights = sorted.map { $0.height }
-                if let last = sorted.last {
-                    let padding = panelPadding * baseZoomLevel
-                    scrollState.contentHeight = last.minY + last.height + padding
+                .onPreferenceChange(CardGeometryKey.self) { items in
+                    let sorted = items.sorted { $0.index < $1.index }
+                    scrollState.cardOffsets = sorted.map { $0.minY }
+                    scrollState.cardHeights = sorted.map { $0.height }
+                    if let last = sorted.last {
+                        let padding = panelPadding * baseZoomLevel
+                        scrollState.contentHeight = last.minY + last.height + padding + arrowZoneHeight
+                    }
                 }
-                showScrollArrow = scrollState.canScrollDown
-                log.debug("UI", "CardGeometry: \(sorted.count) cards, contentHeight=\(Int(scrollState.contentHeight)), viewHeight=\(Int(scrollState.viewHeight)), canScrollDown=\(scrollState.canScrollDown)", emoji: "📐")
-            }
-            .onChange(of: geo.size.height) { _, newHeight in
-                scrollState.viewHeight = newHeight
-                showScrollArrow = scrollState.canScrollDown
-            }
-            .onChange(of: scrollState.scrollOffset) { _, _ in
-                showScrollArrow = scrollState.canScrollDown
+                .onChange(of: scrollState.scrollTargetIndex) { _, index in
+                    guard let index, index < monitor.history.count else { return }
+                    log.debug("Scroll", "proxy.scrollTo card \(index) (keyboard)", emoji: "🎯")
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(monitor.history[index].id, anchor: nil)
+                    }
+                    scrollState.scrollTargetIndex = nil
+                }
             }
             .onAppear {
                 scrollState.viewHeight = geo.size.height
+            }
+            .onChange(of: geo.size.height) { _, newHeight in
+                scrollState.viewHeight = newHeight
             }
         }
     }
@@ -133,14 +159,15 @@ struct HistoryPanelView: View {
     private var scrollArrow: some View {
         VStack(spacing: 0) {
             Rectangle()
-                .fill(.secondary.opacity(0.3))
-                .frame(height: 0.5)
+                .fill(.white.opacity(0.2))
+                .frame(height: 1)
             Image(systemName: "chevron.compact.down")
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
                 .frame(maxWidth: .infinity)
-                .frame(height: arrowZoneHeight - 0.5)
+                .frame(height: arrowZoneHeight - 1)
         }
         .frame(height: arrowZoneHeight)
+        .background(.ultraThinMaterial)
     }
 }

@@ -22,7 +22,7 @@ nonisolated final class LogService: @unchecked Sendable {
     private let iso: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.timeZone = TimeZone(secondsFromGMT: 0)
-        f.formatOptions = [.withInternetDateTime]
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
 
