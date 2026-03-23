@@ -13,6 +13,7 @@ A macOS clipboard history manager with complete clipboard fidelity. Every item y
 ### Rich Previews
 
 - Text entries show a multi-line preview with truncation
+- **Rich text preservation** — text copied from IDEs, editors, and other apps retains its original formatting, syntax highlighting colors, font styles, and background color directly in the card preview
 - Images display as fitted thumbnails
 - Animated GIFs play inline with full animation
 - Videos auto-play silently on loop directly in the history card
@@ -77,8 +78,7 @@ A macOS clipboard history manager with complete clipboard fidelity. Every item y
 
 ### Distribution
 
-- **Clip9** (Mac App Store) — sandboxed, full clipboard fidelity for all pasteboard data types
-- **Clip9 Pro** (direct distribution) — notarized, unsandboxed, adds complete file data backup for Finder file copies
+- Available on the Mac App Store — sandboxed, full clipboard fidelity for all pasteboard data types
 
 ## Technical Details
 

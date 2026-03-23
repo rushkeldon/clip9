@@ -283,43 +283,6 @@ class StorageManager {
         return size
     }
 
-    // MARK: - File Data Capture (Pro)
-
-    #if CLIP9_PRO
-    func captureFileData(for entry: ClipboardEntry) -> ClipboardEntry {
-        guard entry.hasFileURLs else { return entry }
-
-        var updatedItems = entry.items
-        let fileDataType = NSPasteboard.PasteboardType("com.appcloud9.clip9.file-data")
-
-        for (index, item) in entry.items.enumerated() {
-            let fileURLType = NSPasteboard.PasteboardType("public.file-url")
-            guard let urlData = item.dataByType[fileURLType],
-                  let urlString = String(data: urlData, encoding: .utf8),
-                  let url = URL(string: urlString),
-                  url.isFileURL,
-                  let fileData = try? Data(contentsOf: url) else {
-                continue
-            }
-
-            var newDataByType = item.dataByType
-            newDataByType[fileDataType] = fileData
-
-            var newTypes = item.types
-            newTypes.append(fileDataType)
-
-            updatedItems[index] = PasteboardItemData(types: newTypes, dataByType: newDataByType)
-            log.info("Storage", "Captured file data for \(url.lastPathComponent) (\(fileData.count) bytes)", emoji: "📁")
-        }
-
-        return ClipboardEntry(
-            id: entry.id,
-            timestamp: entry.timestamp,
-            items: updatedItems,
-            isConcealed: entry.isConcealed
-        )
-    }
-    #endif
 }
 
 // MARK: - Metadata Codable

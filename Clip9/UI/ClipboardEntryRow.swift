@@ -19,6 +19,14 @@ struct ClipboardEntryRow: View {
 
     private var fixedHeight: Bool { centerContent }
 
+    private var cardFillColor: Color {
+        if let bg = entry.richTextBackgroundColor {
+            let base = Color(nsColor: bg)
+            return isSelected ? base.opacity(0.6) : base.opacity(0.5)
+        }
+        return isSelected ? Color.primary.opacity(0.15) : Color.primary.opacity(0.05)
+    }
+
     var body: some View {
         entryPreview
             .frame(maxWidth: .infinity, maxHeight: fixedHeight ? .infinity : nil,
@@ -27,7 +35,7 @@ struct ClipboardEntryRow: View {
             .frame(width: cardWidth, height: fixedHeight ? cardHeight : nil)
             .background(
                 RoundedRectangle(cornerRadius: 10 * zoom)
-                    .fill(isSelected ? Color.primary.opacity(0.15) : Color.primary.opacity(0.05))
+                    .fill(cardFillColor)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10 * zoom)
@@ -44,6 +52,8 @@ struct ClipboardEntryRow: View {
             imagePreview
         } else if entry.hasFileURLs {
             mediaFilePreview
+        } else if let rich = entry.richText {
+            richTextPreview(rich)
         } else if let text = entry.plainText {
             textPreview(text)
         } else {
@@ -88,6 +98,26 @@ struct ClipboardEntryRow: View {
                 .foregroundStyle(.secondary)
                 .italic()
         }
+    }
+
+    private func richTextPreview(_ nsAttr: NSAttributedString) -> some View {
+        let truncated = NSMutableAttributedString(
+            attributedString: nsAttr.attributedSubstring(from: NSRange(location: 0, length: min(nsAttr.length, 500)))
+        )
+        truncated.removeAttribute(.backgroundColor, range: NSRange(location: 0, length: truncated.length))
+        truncated.enumerateAttribute(.font, in: NSRange(location: 0, length: truncated.length)) { value, range, _ in
+            if let font = value as? NSFont {
+                let scaled = NSFont(descriptor: font.fontDescriptor, size: font.pointSize * zoom)
+                if let scaled { truncated.addAttribute(.font, value: scaled, range: range) }
+            }
+        }
+        let swiftAttr = try? AttributedString(truncated, including: \.appKit)
+        return Text(swiftAttr ?? AttributedString(truncated.string))
+            .font(.system(size: 14 * zoom))
+            .lineLimit(5)
+            .truncationMode(.tail)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func textPreview(_ text: String) -> some View {

@@ -8,8 +8,6 @@ struct SettingsView: View {
     @AppStorage("baseZoomLevel") private var baseZoomLevel = 1.0
     @AppStorage("historySize") private var historySize = 100
     @AppStorage("storageCapGB") private var storageCapGB = 1.0
-    @AppStorage("scrollSpeed") private var scrollSpeed = 80.0
-    @AppStorage("menuBarIconStyle") private var menuBarIconStyle = "monochrome"
 
     var body: some View {
         Form {
@@ -31,12 +29,6 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Picker("Menu Bar Icon", selection: $menuBarIconStyle) {
-                    Text("Monochrome").tag("monochrome")
-                    Text("Color").tag("color")
-                    Text("Custom").tag("custom")
-                }
-                .pickerStyle(.segmented)
             }
 
             Section("History") {
@@ -50,24 +42,16 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Scrolling") {
-                VStack(alignment: .leading) {
-                    Text("Scroll Speed")
-                    Slider(value: $scrollSpeed, in: 20...200, step: 10) {
-                        Text("Scroll Speed")
-                    }
-                }
-            }
-
             Section("Diagnostics") {
-                Button("Open Log Folder") {
+                Button("Show Logs") {
                     log.info("Settings", "User opened log folder", emoji: "📂")
                     LogService.shared.openLogsInFinder()
                 }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 380, height: 520)
+        .frame(width: 420)
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             log.info("Settings", "Settings view opened", emoji: "⚙️")
         }

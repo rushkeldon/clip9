@@ -87,6 +87,28 @@ struct ClipboardEntry: Identifiable, Sendable {
         items.first?.types.first
     }
 
+    /// Rich text (RTF or HTML) as an NSAttributedString, if available.
+    var richText: NSAttributedString? {
+        guard let item = items.first else { return nil }
+        if let rtfData = item.dataByType[.rtf],
+           let attributed = NSAttributedString(rtf: rtfData, documentAttributes: nil),
+           attributed.length > 0 {
+            return attributed
+        }
+        if let htmlData = item.dataByType[.html],
+           let attributed = NSAttributedString(html: htmlData, documentAttributes: nil),
+           attributed.length > 0 {
+            return attributed
+        }
+        return nil
+    }
+
+    /// Dominant background color embedded in the rich text, if any.
+    var richTextBackgroundColor: NSColor? {
+        guard let attr = richText, attr.length > 0 else { return nil }
+        return attr.attribute(.backgroundColor, at: 0, effectiveRange: nil) as? NSColor
+    }
+
     /// Best-effort plain text extraction from the first item.
     var plainText: String? {
         guard let item = items.first else { return nil }

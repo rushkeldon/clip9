@@ -46,7 +46,7 @@ When a password field activates secure text input, clipboard monitoring is block
 
 When files are copied in Finder, the clipboard contains `file://` URLs. Clip9 stores a **copy of the actual file data** in its own application storage rather than just the URL reference. This ensures the clipboard item remains valid even if the original file is moved or deleted.
 
-Note: In the sandboxed App Store version, reading arbitrary file paths from clipboard URLs may be restricted by the sandbox. This is the primary differentiator for Clip9 Pro (see Distribution).
+Note: In the sandboxed App Store version, reading arbitrary file paths from clipboard URLs may be restricted by the sandbox.
 
 ***
 
@@ -99,8 +99,6 @@ Right-clicking the menu bar icon displays a conventional short menu with applica
 * **Clear History** — wipes all stored clipboard entries
 
 * **Support** — opens the support page in the browser
-
-* **Get Pro** — opens the Clip9 Pro direct distribution page in the browser
 
 * **Quit**
 
@@ -166,24 +164,6 @@ The settings window contains the following controls:
 
 * Limitation: May not be able to read file data from `file://` URLs captured from Finder copies due to sandbox file access restrictions. Finder file copies are stored as URL references only.
 
-* Serves as a fully functional standalone product — not a demo or crippled version.
-
-### Clip9 Pro (Direct Distribution)
-
-* Distributed directly from the Clip9 website.
-
-* Notarized by Apple for Gatekeeper compatibility.
-
-* Not sandboxed — full file system access.
-
-* Includes all App Store version features plus: complete file data backup for Finder file copies (the "store actual file data" capability).
-
-* Purchased separately through the website. The App Store version cannot process payment for the Pro version (Apple's guidelines).
-
-### Precedent
-
-This dual-distribution model follows the established pattern used by Many Tricks (Moom, Name Mangler, etc.), Alfred, DaVinci Resolve, and others. The App Store version links to the Pro version via a "Get Pro" menu item — this is permitted because Clip9 Pro is a separate application with capabilities that genuinely cannot exist within the App Store sandbox, not a circumvention of in-app purchase rules.
-
 ***
 
 ## Explicit Non-Features
@@ -204,13 +184,4 @@ The following have been explicitly scoped out:
 
 ***
 
-## Reference
-
-### Many Tricks Dual Distribution Research
-
-* [Our apps and App Store sandboxing rules](https://manytricks.com/blog/?page_id=2208)
-
-* [Direct vs. Mac App Store: Where to buy Mac apps?](https://manytricks.com/blog/?p=4156)
-
-* [Crossgrade an App Store license to a direct license](https://manytricks.com/blog/?page_id=4388)
 

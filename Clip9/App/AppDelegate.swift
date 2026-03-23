@@ -104,46 +104,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func positionPanelBelowStatusItem(_ panel: NSPanel) {
-        guard let button = statusItem.button,
-              let buttonWindow = button.window else {
-            log.warn("App", "Cannot position panel — button or window is nil")
-            return
-        }
+        log.debug("App", "Positioning panel (\(Int(panel.frame.width))x\(Int(panel.frame.height)))", emoji: "📐")
+        positionWindowBelowStatusItem(panel)
+    }
 
+    private func positionWindowBelowStatusItem(_ window: NSWindow) {
+        guard let button = statusItem.button,
+              let buttonWindow = button.window else { return }
         let buttonRect = button.convert(button.bounds, to: nil)
         let screenRect = buttonWindow.convertToScreen(buttonRect)
-
         let screen = buttonWindow.screen ?? NSScreen.main ?? NSScreen.screens.first!
-        let screenFrame = screen.frame
         let visibleFrame = screen.visibleFrame
-        let menuBarHeight = screenFrame.maxY - visibleFrame.maxY
-
-        let titlebarHeight = panel.frame.height - panel.contentLayoutRect.height
-        let contentSize = panel.contentView?.frame.size ?? .zero
-
-        log.info("App", "=== PANEL POSITION DEBUG ===", emoji: "🔍")
-        log.info("App", "Button bounds: \(button.bounds)", emoji: "🔍")
-        log.info("App", "Button rect (window coords): \(buttonRect)", emoji: "🔍")
-        log.info("App", "Button rect (screen coords): \(screenRect)", emoji: "🔍")
-        log.info("App", "Screen frame: \(screenFrame)", emoji: "🔍")
-        log.info("App", "Screen visibleFrame: \(visibleFrame)", emoji: "🔍")
-        log.info("App", "Menu bar height (screen.maxY - visible.maxY): \(menuBarHeight)", emoji: "🔍")
-        log.info("App", "Panel frame: \(panel.frame)", emoji: "🔍")
-        log.info("App", "Panel contentLayoutRect: \(panel.contentLayoutRect)", emoji: "🔍")
-        log.info("App", "Panel titlebar height (frame - contentLayout): \(titlebarHeight)", emoji: "🔍")
-        log.info("App", "Panel contentView frame: \(contentSize)", emoji: "🔍")
-
         let idealX = screenRect.minX
-        let x = min(idealX, visibleFrame.maxX - panel.frame.width)
-        let y = max(screenRect.minY - panel.frame.height, visibleFrame.minY)
-
-        log.info("App", "Computed X: idealX=\(Int(idealX)), clamped=\(Int(x))", emoji: "🔍")
-        log.info("App", "Computed Y: screenRect.minY=\(Int(screenRect.minY)) - panel.frame.height=\(Int(panel.frame.height)) = \(Int(screenRect.minY - panel.frame.height)), clamped=\(Int(y))", emoji: "🔍")
-        log.info("App", "Panel top edge will be at: \(Int(y + panel.frame.height))", emoji: "🔍")
-        log.info("App", "Gap from screenRect.minY to panel top: \(Int(screenRect.minY - (y + panel.frame.height)))", emoji: "🔍")
-        log.info("App", "=== END DEBUG ===", emoji: "🔍")
-
-        panel.setFrameOrigin(NSPoint(x: x, y: y))
+        let x = min(idealX, visibleFrame.maxX - window.frame.width)
+        let y = max(screenRect.minY - window.frame.height, visibleFrame.minY)
+        window.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
     // MARK: - Event Monitors
@@ -253,14 +228,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let historySize = defaults.object(forKey: "historySize") as? Int ?? 100
         let storageCap = defaults.object(forKey: "storageCapGB") as? Double ?? 1.0
-        let scrollSpeed = defaults.object(forKey: "scrollSpeed") as? Double ?? 80.0
 
-        historyPanel?.scrollState.scrollSpeed = CGFloat(scrollSpeed)
         clipboardMonitor.maxHistorySize = historySize
         StorageManager.shared.maxEntryCount = historySize
         StorageManager.shared.storageCapBytes = Int(storageCap * 1_073_741_824)
 
-        log.debug("App", "Settings synced: history=\(historySize), cap=\(storageCap)GB, speed=\(scrollSpeed)", emoji: "⚙️")
+        log.debug("App", "Settings synced: history=\(historySize), cap=\(storageCap)GB", emoji: "⚙️")
     }
 
     private func observeSettingsChanges() {
@@ -283,31 +256,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        menu.addItem(.separator())
+
         let aboutItem = NSMenuItem(title: "About Clip9", action: #selector(showAbout), keyEquivalent: "")
         aboutItem.target = self
         menu.addItem(aboutItem)
+
+        let supportItem = NSMenuItem(title: "Support", action: #selector(openSupport), keyEquivalent: "")
+        supportItem.target = self
+        menu.addItem(supportItem)
 
         menu.addItem(.separator())
 
         let clearItem = NSMenuItem(title: "Clear History", action: #selector(clearHistory), keyEquivalent: "")
         clearItem.target = self
         menu.addItem(clearItem)
-
-        menu.addItem(.separator())
-
-        let supportItem = NSMenuItem(title: "Support", action: #selector(openSupport), keyEquivalent: "")
-        supportItem.target = self
-        menu.addItem(supportItem)
-
-        let logsItem = NSMenuItem(title: "Show Logs", action: #selector(showLogs), keyEquivalent: "")
-        logsItem.target = self
-        menu.addItem(logsItem)
-
-        #if !CLIP9_PRO
-        let proItem = NSMenuItem(title: "Get Pro", action: #selector(openGetPro), keyEquivalent: "")
-        proItem.target = self
-        menu.addItem(proItem)
-        #endif
 
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Clip9", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -318,8 +281,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         log.info("App", "Opening settings", emoji: "⚙️")
+        historyPanel?.close()
 
         if let existing = settingsWindow {
+            positionWindowBelowStatusItem(existing)
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -329,8 +294,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Clip9 Settings"
         window.styleMask = [.titled, .closable]
-        window.center()
         window.isReleasedWhenClosed = false
+        positionWindowBelowStatusItem(window)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow = window
@@ -370,15 +335,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         log.info("App", "Opening logs directory", emoji: "📂")
         LogService.shared.openLogsInFinder()
     }
-
-    #if !CLIP9_PRO
-    @objc private func openGetPro() {
-        log.info("App", "Opening Get Pro URL", emoji: "🔗")
-        if let url = URL(string: "https://clip9.app/pro") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-    #endif
 
     deinit {
         if let monitor = globalEventMonitor {

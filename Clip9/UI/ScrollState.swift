@@ -7,7 +7,6 @@ class ScrollState {
     var scrollOffset: CGFloat = 0.0
     var contentHeight: CGFloat = 0.0
     var viewHeight: CGFloat = 400.0
-    var scrollSpeed: CGFloat = 80.0
 
     var selectedIndex: Int? = nil
     var cardOffsets: [CGFloat] = []
