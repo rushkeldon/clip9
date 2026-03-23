@@ -3,7 +3,7 @@ import SwiftUI
 
 private let log = LogService.shared
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var historyPanel: HistoryPanel?
     private var globalEventMonitor: Any?
@@ -13,6 +13,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var settingsWindow: NSWindow?
     private var settingsObservers: [NSObjectProtocol] = []
+
+    /// When the history panel was shown from status-menu dismiss (guards a duplicate toggle closing it in the same gesture).
+    private var historyPanelOpenedFromMenuDismissAt: Date?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         log.info("App", "Clip9 launched", emoji: "🚀")
@@ -63,6 +66,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Exclusive UI (history panel, menu, settings, about)
+
+    /// Closes every transient surface except optionally the history panel.
+    private func dismissOtherExclusiveUI(keepingHistoryPanel: Bool) {
+        if !keepingHistoryPanel {
+            historyPanel?.close()
+        }
+        settingsWindow?.close()
+        orderOutAboutPanelsIfPresent()
+        firstRunBubble.dismiss()
+    }
+
+    /// Hides the standard About panel if it is open (class/title heuristics).
+    private func orderOutAboutPanelsIfPresent() {
+        for window in NSApp.windows {
+            let typeName = String(describing: type(of: window))
+            if typeName.contains("About") {
+                window.orderOut(nil)
+                continue
+            }
+            if window is NSPanel, window.title.localizedCaseInsensitiveContains("About") {
+                window.orderOut(nil)
+            }
+        }
+    }
+
+    private func presentHistoryPanel() {
+        guard let panel = historyPanel else { return }
+        panel.updateSize(itemCount: clipboardMonitor.history.count)
+        positionPanelBelowStatusItem(panel)
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     // MARK: - History Panel
 
     private func setupHistoryPanel() {
@@ -92,14 +129,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if panel.isVisible {
+            if let openedAt = historyPanelOpenedFromMenuDismissAt,
+               Date().timeIntervalSince(openedAt) < 0.2 {
+                historyPanelOpenedFromMenuDismissAt = nil
+                log.debug("App", "Ignoring history panel close — same gesture as menu-dismiss open", emoji: "⏭️")
+                return
+            }
             log.debug("App", "Hiding history panel", emoji: "🔽")
             panel.close()
         } else {
             log.debug("App", "Showing history panel (history count=\(clipboardMonitor.history.count))", emoji: "🔼")
-            panel.updateSize(itemCount: clipboardMonitor.history.count)
-            positionPanelBelowStatusItem(panel)
-            panel.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            dismissOtherExclusiveUI(keepingHistoryPanel: true)
+            presentHistoryPanel()
         }
     }
 
@@ -249,8 +290,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Right-Click Application Menu
 
+    private weak var applicationMenuRef: NSMenu?
+
     private func showApplicationMenu() {
+        dismissOtherExclusiveUI(keepingHistoryPanel: false)
+
         let menu = NSMenu()
+        menu.delegate = self
+        applicationMenuRef = menu
 
         let settingsItem = NSMenuItem(title: "Settings\u{2026}", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -279,9 +326,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 5), in: button)
     }
 
+    func menuDidClose(_ menu: NSMenu) {
+        guard menu === applicationMenuRef else { return }
+        applicationMenuRef = nil
+
+        guard let button = statusItem.button, let buttonWindow = button.window else { return }
+        let mouse = NSEvent.mouseLocation
+        let rectInWindow = button.convert(button.bounds, to: nil)
+        let screenRect = buttonWindow.convertToScreen(rectInWindow)
+        guard screenRect.contains(mouse) else { return }
+
+        guard let panel = historyPanel, !panel.isVisible else { return }
+        log.debug("App", "Menu closed over status item — showing history panel", emoji: "🔼")
+        dismissOtherExclusiveUI(keepingHistoryPanel: true)
+        historyPanelOpenedFromMenuDismissAt = Date()
+        presentHistoryPanel()
+    }
+
     @objc private func openSettings() {
         log.info("App", "Opening settings", emoji: "⚙️")
-        historyPanel?.close()
+        dismissOtherExclusiveUI(keepingHistoryPanel: false)
 
         if let existing = settingsWindow {
             positionWindowBelowStatusItem(existing)
@@ -303,12 +367,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showAbout() {
         log.info("App", "Showing about panel", emoji: "ℹ️")
+        dismissOtherExclusiveUI(keepingHistoryPanel: false)
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(nil)
     }
 
     @objc private func clearHistory() {
         log.info("App", "Clear history requested", emoji: "🗑️")
+        dismissOtherExclusiveUI(keepingHistoryPanel: false)
         let alert = NSAlert()
         alert.messageText = "Clear Clipboard History?"
         alert.informativeText = "This will permanently delete all stored clipboard entries."

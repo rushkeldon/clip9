@@ -27,10 +27,16 @@ class FirstRunBubble {
         log.info("FirstRun", "First-run bubble displayed", emoji: "👋")
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
-            self?.popover?.close()
-            self?.popover = nil
-            log.debug("FirstRun", "First-run bubble auto-dismissed", emoji: "🔽")
+            self?.dismiss()
         }
+    }
+
+    /// Closes the first-run popover so it does not stack with the history panel or status menu.
+    func dismiss() {
+        guard popover != nil else { return }
+        popover?.close()
+        popover = nil
+        log.debug("FirstRun", "First-run bubble dismissed", emoji: "🔽")
     }
 }
 

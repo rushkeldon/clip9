@@ -20,6 +20,14 @@ class ClipboardMonitor {
     func start() {
         log.info("Clipboard", "Loading history from disk...", emoji: "📂")
         history = StorageManager.shared.loadAllEntries()
+        let concealed = history.filter(\.isConcealed)
+        if !concealed.isEmpty {
+            for entry in concealed {
+                StorageManager.shared.deleteEntry(uuidString: entry.id.uuidString)
+            }
+            history.removeAll { $0.isConcealed }
+            log.info("Clipboard", "Removed \(concealed.count) legacy concealed placeholder(s) from history", emoji: "🧹")
+        }
         log.info("Clipboard", "Loaded \(history.count) entries from disk", emoji: "📚")
 
         lastChangeCount = pasteboard.changeCount
@@ -68,14 +76,7 @@ class ClipboardMonitor {
         }
 
         if isConcealed {
-            let sentinel = ClipboardEntry(
-                id: UUID(),
-                timestamp: Date(),
-                items: [],
-                isConcealed: true
-            )
-            pushEntry(sentinel)
-            log.info("Clipboard", "Concealed content detected — sentinel entry created (\(sentinel.id))", emoji: "🔐")
+            log.info("Clipboard", "Concealed content detected — not recording in history", emoji: "🔐")
             return
         }
 
@@ -112,6 +113,11 @@ class ClipboardMonitor {
             items: capturedItems,
             isConcealed: false
         )
+
+        if candidateEntry.totalBytes == 0 {
+            log.info("Clipboard", "Skipping capture — pasteboard has no payload bytes (e.g. empty text only)", emoji: "⏭️")
+            return
+        }
 
         // Check 1: Exact duplicate within last 10 — promote existing
         let dedupWindow = min(history.count, 10)

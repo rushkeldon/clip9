@@ -52,12 +52,18 @@ struct ClipboardEntryRow: View {
             imagePreview
         } else if entry.hasFileURLs {
             mediaFilePreview
-        } else if let rich = entry.richText {
+        } else if entry.richTextIsWhitespaceOnlyForPreview, let rich = entry.richText {
+            invisiblesTextPreview(rich.string)
+        } else if entry.hasSignificantRichTextPreview, let rich = entry.richText {
             richTextPreview(rich)
-        } else if let text = entry.plainText {
-            textPreview(text)
+        } else if entry.hasRenderablePlainText, let text = entry.plainText {
+            if ClipboardInvisibles.plainTextNeedsInvisiblesPreview(text) {
+                invisiblesTextPreview(text)
+            } else {
+                textPreview(text)
+            }
         } else {
-            unknownPreview
+            typeAwareFallbackPreview
         }
     }
 
@@ -129,6 +135,35 @@ struct ClipboardEntryRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private func invisiblesTextPreview(_ text: String) -> some View {
+        let attr = ClipboardInvisibles.attributedPreview(
+            for: String(text.prefix(500)),
+            fontSize: 14 * zoom,
+            normalColor: .primary,
+            mutedColor: .secondary
+        )
+        return Text(attr)
+            .lineLimit(5)
+            .truncationMode(.tail)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var typeAwareFallbackPreview: some View {
+        let pair = ClipboardTypePreview.fallback(for: entry)
+        return HStack(spacing: 8 * zoom) {
+            Image(systemName: pair.symbol)
+                .font(.system(size: 18 * zoom, weight: .medium))
+                .foregroundStyle(.primary)
+                .symbolRenderingMode(.hierarchical)
+            Text(pair.label)
+                .font(.system(size: 16 * zoom))
+                .foregroundStyle(.primary)
+                .italic()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     @ViewBuilder
     private var imagePreview: some View {
         if let nsImage = entry.image {
@@ -185,14 +220,4 @@ struct ClipboardEntryRow: View {
         }
     }
 
-    private var unknownPreview: some View {
-        HStack(spacing: 6 * zoom) {
-            Image(systemName: "doc.on.clipboard")
-                .font(.system(size: 16 * zoom))
-                .foregroundStyle(.secondary)
-            Text("Clipboard data")
-                .font(.system(size: 16 * zoom))
-                .foregroundStyle(.secondary)
-        }
-    }
 }

@@ -36,7 +36,17 @@ All data is restored as concrete blobs. There is no need to re-wrap data as lazy
 
 ### Concealed / Sensitive Content
 
-macOS 14+ allows apps to mark clipboard content as concealed (e.g., password managers, Safari autofill). Clip9 does **not** persist concealed or sensitive clipboard items. This is by design — these items are meant to be ephemeral. A brief indicator such as "sensitive item — not saved" may appear in the history to explain the gap.
+macOS 14+ allows apps to mark clipboard content as concealed (e.g., password managers, Safari autofill). Clip9 does **not** persist concealed or sensitive clipboard items and **does not** add a history row for those events. The content never appears in the list; clipboard fidelity applies only to non-concealed captures.
+
+### Empty Text–Only Clipboard
+
+If the pasteboard change contains **no payload bytes** (for example, only an empty plain-text representation and no other data), Clip9 does not add a history entry.
+
+### Previews: Whitespace and Non-Text Types
+
+When plain text is only whitespace or includes invisible Unicode characters, the card preview uses visible stand-ins (similar to “show invisibles” in editors) so the entry is not a blank bubble; restore still uses the original data.
+
+When there is no plain or rich text preview but other types are present (e.g. PDF, URL, proprietary paste types), the card shows a template SF Symbol and a short plain-English label describing the kind of content—not raw pasteboard type strings.
 
 ### Secure Input Mode
 

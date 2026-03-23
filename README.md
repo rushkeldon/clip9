@@ -19,7 +19,7 @@ A macOS clipboard history manager with complete clipboard fidelity. Every item y
 - Videos auto-play silently on loop directly in the history card
 - Audio files show an icon with filename
 - File copies show the filename and count ("and 3 more")
-- Sensitive/concealed items (e.g. from password managers) display a privacy placeholder without storing the content
+- Sensitive/concealed items (e.g. from password managers) are not stored and do not appear in history
 
 ### Menu Bar App
 
@@ -51,7 +51,10 @@ A macOS clipboard history manager with complete clipboard fidelity. Every item y
 - **Duplicate detection** — if you copy the same thing twice, the existing entry is promoted to the top instead of creating a duplicate
 - **Superset coalescing** — if a new copy contains the same data plus additional types, the existing entry is upgraded in place
 - **Self-change filtering** — clipboard changes made by Clip9 itself (e.g. restoring an entry) are ignored
-- **Concealed content privacy** — entries marked as concealed by password managers (via `org.nspasteboard.ConcealedType`) are detected and excluded from storage
+- **Concealed content privacy** — clipboard changes marked concealed (via `org.nspasteboard.ConcealedType`) are ignored: nothing is saved and no history row is added
+- **Empty-only captures** — a clipboard change with no payload bytes (e.g. empty text only) does not create a history entry
+- **Whitespace and invisible characters** — previews can show visible symbols for spaces, line breaks, and common invisible Unicode; restore is unchanged
+- **Non-text previews** — when plain/rich previews do not apply, cards show an SF Symbol and a short English description of the data kind (not raw type IDs)
 
 ### Persistent Storage
 

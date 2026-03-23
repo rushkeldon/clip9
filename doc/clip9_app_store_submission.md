@@ -28,7 +28,7 @@ FULL-FIDELITY CAPTURE
 Clip9 captures every UTI type on the macOS pasteboard: plain text, rich text, HTML, images, animated GIFs, videos, audio, files, and arbitrary binary data. Multi-item clipboard copies from Finder are captured together. When you restore an entry, it's byte-for-byte identical to the original.
 
 RICH PREVIEWS
-See your clipboard history at a glance. Animated GIFs play inline. Videos loop silently. Images show fitted thumbnails. Rich text from IDEs and editors preserves its original syntax highlighting, font styles, and background colors. Files display their name and count. Sensitive items from password managers show a privacy placeholder — the content is never stored.
+See your clipboard history at a glance. Animated GIFs play inline. Videos loop silently. Images show fitted thumbnails. Rich text from IDEs and editors preserves its original syntax highlighting, font styles, and background colors. Files display their name and count. Sensitive items from password managers are not stored and do not appear in history.
 
 MENU BAR NATIVE
 Clip9 lives entirely in your menu bar — no Dock icon, no window clutter. Click to open a floating, translucent frosted-glass panel anchored below the icon. Click outside or press Escape to dismiss. Right-click for Settings, Clear History, and more.

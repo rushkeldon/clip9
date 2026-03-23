@@ -195,3 +195,29 @@ struct ClipboardEntry: Identifiable, Sendable {
         return anyItemIsSubset
     }
 }
+
+extension ClipboardEntry {
+
+    private static func isWhitespaceOnlyString(_ string: String) -> Bool {
+        !string.isEmpty && string.allSatisfy(\.isWhitespace)
+    }
+
+    /// Non-empty rich text that should use the attributed preview (not whitespace-only).
+    var hasSignificantRichTextPreview: Bool {
+        guard let r = richText else { return false }
+        let s = r.string
+        guard !s.isEmpty else { return false }
+        return !Self.isWhitespaceOnlyString(s)
+    }
+
+    /// Rich text that is only whitespace — use invisible-style preview on the string.
+    var richTextIsWhitespaceOnlyForPreview: Bool {
+        guard let r = richText else { return false }
+        return Self.isWhitespaceOnlyString(r.string)
+    }
+
+    var hasRenderablePlainText: Bool {
+        guard let t = plainText else { return false }
+        return !t.isEmpty
+    }
+}
