@@ -25,7 +25,7 @@ A macOS clipboard history manager with complete clipboard fidelity. Every item y
 
 - Lives entirely in the macOS menu bar — no Dock icon, no window clutter
 - Left-click opens the clipboard history panel
-- Right-click opens the application menu (Settings, About, Clear History, Support, Show Logs, Quit)
+- Right-click opens the application menu (Settings, About, Clear History, Support, Quit)
 - The panel is a floating, translucent frosted-glass overlay anchored below the menu bar icon
 
 ### Navigation
@@ -65,11 +65,9 @@ A macOS clipboard history manager with complete clipboard fidelity. Every item y
 
 - Launch at Login
 - Card size (zoom slider)
-- Menu bar icon style (Monochrome, Color, Custom)
 - Maximum history items
 - Storage cap
-- Scroll speed
-- Open log folder (for diagnostics)
+- Show Logs (for diagnostics)
 
 ### First Run Experience
 

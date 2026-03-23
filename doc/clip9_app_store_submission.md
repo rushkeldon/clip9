@@ -10,11 +10,11 @@ Clip9
 
 ## Subtitle (30 characters max)
 
-Clipboard History, Full Fidelity
+Full-Fidelity Copy History
 
 ## Promotional Text (170 characters max)
 
-Every copy captured in full — text, images, GIFs, videos, files, rich text — and restored exactly as it was. Smart deduplication, zero network access. Your clipboard, owned.
+Every copy captured in full — text, images, GIFs, videos, files, rich text — restored exactly as copied. Smart deduplication, zero network access. Your clipboard, owned.
 
 ## Description
 
@@ -43,7 +43,7 @@ SMART DEDUPLICATION
 Copy the same thing twice? Clip9 promotes the existing entry instead of cluttering your history. When an app writes the same data plus additional types, the existing entry is upgraded in place. Clipboard changes made by Clip9 itself are automatically ignored.
 
 PERSISTENT AND CONFIGURABLE
-Your clipboard history survives app restarts and system reboots. Configure max history (10–500 items), storage cap (0.1–10 GB), scroll speed, menu bar icon style, and launch at login — all from a clean Settings panel.
+Your clipboard history survives app restarts and system reboots. Configure max history (10–500 items), storage cap (0.1–10 GB), and launch at login — all from a clean Settings panel.
 
 PRIVATE BY DESIGN
 Clip9 makes zero network requests. No analytics. No telemetry. No cloud sync. No account required. No model downloads. No update checks. Your clipboard data never leaves your Mac. Period.
@@ -62,7 +62,7 @@ What's in the box:
 - Smart deduplication and superset coalescing
 - Concealed content detection — password managers excluded automatically
 - Persistent storage — survives restarts and reboots
-- Configurable history size, storage cap, scroll speed, and icon style
+- Configurable history size, storage cap, and launch at login
 - Zero network access — fully offline, fully private
 - Native macOS experience with keyboard shortcuts
 
@@ -132,16 +132,14 @@ Features:
 - Adjustable zoom (Cmd+/Cmd-, 0.5x to 3.0x)
 - Smart deduplication and superset coalescing
 - Concealed content detection for password managers
-- Configurable history size, storage cap, and scroll speed
+- Configurable history size, storage cap, and launch at login
 - Private by design — zero network requests
 
 ---
 
 ## App Store Review Notes
 
-Clip9 is a clipboard history manager that monitors the macOS system pasteboard and stores copies locally for later retrieval.
-
-Accessibility permission is required to detect keyboard shortcuts (Cmd+/Cmd-/Cmd+0 for zoom). The app functions fully without this permission — zoom is also available via the Settings slider.
+Clip9 is a clipboard history manager that monitors the macOS system pasteboard and stores copies locally for later retrieval. No special permissions are required.
 
 The app makes zero network requests. There is no login, no account creation, and no server communication of any kind. All data is stored locally in the app's Application Support directory within the macOS sandbox.
 
