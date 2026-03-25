@@ -220,4 +220,17 @@ extension ClipboardEntry {
         guard let t = plainText else { return false }
         return !t.isEmpty
     }
+
+    /// Log-friendly line when the user highlights an entry (mouse or keyboard).
+    var selectionDebugSummary: String {
+        let firstItemTypes = items.first?.types.map(\.rawValue).joined(separator: ", ") ?? ""
+        let plainSnippet: String
+        if let t = plainText {
+            let oneLine = t.replacingOccurrences(of: "\n", with: "\\n")
+            plainSnippet = oneLine.count > 200 ? String(oneLine.prefix(200)) + "…" : oneLine
+        } else {
+            plainSnippet = "nil"
+        }
+        return "items=\(items.count) totalBytes=\(totalBytes) firstItemTypes=[\(firstItemTypes)] plainText=\(plainSnippet)"
+    }
 }

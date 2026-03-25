@@ -4,11 +4,20 @@ private let log = LogService.shared
 
 @Observable
 class ScrollState {
-    var scrollOffset: CGFloat = 0.0
+    var scrollOffset: CGFloat = 0.0 {
+        didSet {
+            guard oldValue != scrollOffset else { return }
+            reselectUnderMouseIfPossible()
+        }
+    }
     var contentHeight: CGFloat = 0.0
     var viewHeight: CGFloat = 400.0
 
     var selectedIndex: Int? = nil
+
+    /// Last mouse Y in `MouseTrackingNSView` space (AppKit: origin bottom-left), for hit-test after scroll.
+    private var lastMouseYInOverlay: CGFloat?
+    private var lastOverlayHeight: CGFloat?
     var cardOffsets: [CGFloat] = []
     var cardHeights: [CGFloat] = []
 
@@ -38,6 +47,8 @@ class ScrollState {
 
     func updateMousePosition(_ mouseY: CGFloat, viewHeight: CGFloat) {
         self.viewHeight = viewHeight
+        lastMouseYInOverlay = mouseY
+        lastOverlayHeight = viewHeight
 
         guard maxOffset > 0 else {
             if isScrollingDown || isScrollingUp {
@@ -69,22 +80,70 @@ class ScrollState {
     }
 
     func selectByMousePosition(_ mouseY: CGFloat, viewHeight: CGFloat) {
+        lastMouseYInOverlay = mouseY
+        lastOverlayHeight = viewHeight
+        applyMouseHitTest(mouseY: mouseY, viewHeight: viewHeight)
+    }
+
+    /// Re-run hit test after scroll (wheel or hover-scroll) without a new mouse event.
+    private func reselectUnderMouseIfPossible() {
+        guard let y = lastMouseYInOverlay, let h = lastOverlayHeight else { return }
+        applyMouseHitTest(mouseY: y, viewHeight: h)
+    }
+
+    /// Maps overlay Y to document Y using the same scroll origin as `NSScrollView` (avoids desync with SwiftUI-only offset while hover-scrolling).
+    private func applyMouseHitTest(mouseY: CGFloat, viewHeight: CGFloat) {
+        if cachedScrollView == nil { _ = findScrollView() }
         guard !cardOffsets.isEmpty, cardOffsets.count == cardHeights.count else { return }
-        let realOffset = cachedScrollView?.contentView.bounds.origin.y ?? scrollOffset
-        let contentY = (viewHeight - mouseY) + realOffset
+
+        let arrowH = HistoryPanel.arrowZoneHeight
+        let viewportH = viewHeight - arrowH
+        guard viewportH > 1 else { return }
+
+        // AppKit: mouseY is from bottom of overlay. Distance from top of overlay downward:
+        let fromTop = viewHeight - mouseY
+        // Bottom strip is the hover-scroll arrow, not part of the card stack.
+        guard fromTop < viewportH - 0.5 else {
+            if selectedIndex != nil {
+                log.debug("Mouse", "select NONE (in arrow zone fromTop=\(Int(fromTop)) viewportH=\(Int(viewportH)))", emoji: "👆")
+            }
+            selectedIndex = nil
+            return
+        }
+
+        let yInViewport = fromTop
+        let scrollOriginY = cachedScrollView?.contentView.bounds.origin.y ?? scrollOffset
+        let contentY = yInViewport + scrollOriginY
+
+        // Prefer exact hit; spacing between cards has no rect — use nearest card by Y distance so highlight does not flicker off.
+        var bestIndex = 0
+        var bestDistance = CGFloat.infinity
         for i in 0..<cardOffsets.count {
-            if contentY >= cardOffsets[i] && contentY < cardOffsets[i] + cardHeights[i] {
-                if selectedIndex != i {
-                    log.debug("Mouse", "select card \(i) (mouseY=\(Int(mouseY)) offset=\(Int(realOffset)) contentY=\(Int(contentY)))", emoji: "👆")
-                }
-                selectedIndex = i
-                return
+            let lo = cardOffsets[i]
+            let hi = lo + cardHeights[i]
+            let distance: CGFloat
+            if contentY < lo {
+                distance = lo - contentY
+            } else if contentY >= hi {
+                distance = contentY - hi
+            } else {
+                distance = 0
+            }
+            if distance < bestDistance {
+                bestDistance = distance
+                bestIndex = i
             }
         }
-        if selectedIndex != nil {
-            log.debug("Mouse", "select NONE (mouseY=\(Int(mouseY)) offset=\(Int(realOffset)) contentY=\(Int(contentY)))", emoji: "👆")
+
+        if selectedIndex != bestIndex {
+            let gapNote = bestDistance > 0.5 ? " nearest gap=\(Int(bestDistance))" : ""
+            log.debug(
+                "Mouse",
+                "select card \(bestIndex) (mouseY=\(Int(mouseY)) fromTop=\(Int(fromTop)) scrollOrigin=\(Int(scrollOriginY)) contentY=\(Int(contentY)))\(gapNote)",
+                emoji: "👆"
+            )
         }
-        selectedIndex = nil
+        selectedIndex = bestIndex
     }
 
     func selectNext(count: Int) {
@@ -98,6 +157,11 @@ class ScrollState {
         guard let current = selectedIndex else { return }
         selectedIndex = max(current - 1, 0)
         scrollTargetIndex = selectedIndex
+    }
+
+    func clearMouseHitTestState() {
+        lastMouseYInOverlay = nil
+        lastOverlayHeight = nil
     }
 
     func stopScrolling() {
@@ -155,6 +219,7 @@ class ScrollState {
         clipView.setBoundsOrigin(origin)
         scrollView.reflectScrolledClipView(clipView)
         scrollOffset = origin.y
+        reselectUnderMouseIfPossible()
     }
 
     private func findScrollView() -> NSScrollView? {

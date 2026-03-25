@@ -52,6 +52,11 @@ struct HistoryPanelView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(MouseTrackingOverlay(scrollState: scrollState))
         .ignoresSafeArea()
+        .onChange(of: scrollState.selectedIndex) { _, index in
+            guard let index, index < monitor.history.count else { return }
+            let entry = monitor.history[index]
+            log.info("UI", "Selection [\(index)] id=\(entry.id): \(entry.selectionDebugSummary)", emoji: "📋")
+        }
     }
 
     private var emptyState: some View {

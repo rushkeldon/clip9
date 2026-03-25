@@ -63,6 +63,7 @@ struct MouseTrackingOverlay: NSViewRepresentable {
         view.onMouseExit = { [scrollState] in
             log.debug("Mouse", "Mouse exited → stopping scroll, clearing selection", emoji: "🖱️")
             scrollState.stopScrolling()
+            scrollState.clearMouseHitTestState()
             scrollState.selectedIndex = nil
         }
         log.debug("Mouse", "MouseTrackingOverlay NSView created", emoji: "🖱️")

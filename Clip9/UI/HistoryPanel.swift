@@ -82,6 +82,7 @@ class HistoryPanel: NSPanel {
         log.debug("Panel", "Panel closing", emoji: "🔽")
         super.close()
         scrollState.stopScrolling()
+        scrollState.clearMouseHitTestState()
         scrollState.selectedIndex = nil
     }
 }
