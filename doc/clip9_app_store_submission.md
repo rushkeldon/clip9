@@ -34,10 +34,10 @@ MENU BAR NATIVE
 Clip9 lives entirely in your menu bar — no Dock icon, no window clutter. Click to open a floating, translucent frosted-glass panel anchored below the icon. Click outside or press Escape to dismiss. Right-click for Settings, Clear History, and more.
 
 FLUID NAVIGATION
-Mouse hover highlights cards in real time. Arrow keys move the selection. A chevron appears when more content is below — hover over it and the list scrolls smoothly at a constant speed. Mouse and keyboard work together seamlessly. Click or press Enter to restore.
+Mouse hover highlights cards in real time. Arrow keys move the selection. A down button appears when more content is below — hover over it and the list scrolls smoothly at a constant speed. Mouse and keyboard work together seamlessly. Click or press Enter (or Spacebar) to restore the selected item to your clipboard - ready to be pasted.
 
 ADJUSTABLE ZOOM
-Resize cards with Cmd+ and Cmd- (0.5x to 3.0x), or use the slider in Settings. The panel resizes dynamically, growing leftward from the menu bar icon. Cmd+0 resets to default.
+Resize cards with CMD + and CMD - (0.5x to 3.0x), or use the slider in Settings. The panel resizes dynamically, growing leftward from the menu bar icon. CMD 0 resets to default.
 
 SMART DEDUPLICATION
 Copy the same thing twice? Clip9 promotes the existing entry instead of cluttering your history. When an app writes the same data plus additional types, the existing entry is upgraded in place. Clipboard changes made by Clip9 itself are automatically ignored.
@@ -54,6 +54,7 @@ Clip9 is a native Swift and SwiftUI application — not an Electron wrapper, not
 ---
 
 What's in the box:
+
 - Full-fidelity clipboard capture for every macOS data type
 - Rich previews — animated GIFs, video playback, syntax-highlighted text, image thumbnails
 - Menu bar native — floating translucent panel, no Dock icon
@@ -81,6 +82,14 @@ Utilities
 ## Secondary Category
 
 Productivity
+
+---
+
+## URLs
+
+- Privacy Policy: https://appcloud9.com/clip9/privacy-policy
+- Terms of Use: https://appcloud9.com/clip9/terms
+- Support: https://appcloud9.com/clip9/support
 
 ---
 

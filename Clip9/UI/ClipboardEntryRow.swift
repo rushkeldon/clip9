@@ -1,6 +1,164 @@
+import AppKit
 import SwiftUI
 
-private let log = LogService.shared
+// MARK: - Display State Cache (internal singleton)
+
+final class DisplayStateCache {
+    static let shared = DisplayStateCache()
+
+    private let cache = NSCache<NSUUID, CardDisplayStateBox>()
+
+    private init() {
+        cache.countLimit = 200
+    }
+
+    func get(_ id: UUID) -> CardDisplayState? {
+        cache.object(forKey: id as NSUUID)?.state
+    }
+
+    func set(_ state: CardDisplayState, for id: UUID) {
+        cache.setObject(CardDisplayStateBox(state), forKey: id as NSUUID)
+    }
+
+    func remove(id: UUID) {
+        cache.removeObject(forKey: id as NSUUID)
+    }
+
+    func removeAll() {
+        cache.removeAllObjects()
+    }
+
+    /// Populate cache for an entry if not already present.
+    func warmIfNeeded(entry: ClipboardEntry) {
+        let key = entry.id as NSUUID
+        guard cache.object(forKey: key) == nil else { return }
+        let state = CardDisplayState(entry: entry)
+        _ = state.richText
+        cache.setObject(CardDisplayStateBox(state), forKey: key)
+    }
+}
+
+private final class CardDisplayStateBox {
+    let state: CardDisplayState
+    init(_ state: CardDisplayState) { self.state = state }
+}
+
+// MARK: - Card Display State
+
+/// Pre-computed rich-text display values with lazy richText resolution.
+/// Uses DisplayCache (from disk) for the fast path, avoiding RTF/HTML parsing
+/// until the display cascade actually needs the NSAttributedString.
+final class CardDisplayState {
+    let isOnlyObjectReplacements: Bool
+    let attachmentImageData: Data?
+    let foregroundIsLight: Bool?
+    let isWhitespaceOnly: Bool
+    let hasSignificantPreview: Bool
+    let hasRenderablePlainText: Bool
+    let plainTextAppearsToBeHTMLMarkup: Bool
+
+    private var _richText: NSAttributedString??
+    private let entry: ClipboardEntry
+
+    var richText: NSAttributedString? {
+        if let cached = _richText { return cached }
+        let rt = entry.richText
+        _richText = .some(rt)
+        return rt
+    }
+
+    init(entry: ClipboardEntry) {
+        self.entry = entry
+
+        if let dc = entry.displayCache, dc.version == DisplayCache.currentVersion {
+            self.isOnlyObjectReplacements = dc.isOnlyObjectReplacements
+            self.attachmentImageData = dc.attachmentImageData
+            self.foregroundIsLight = dc.foregroundIsLight
+            self.isWhitespaceOnly = dc.isWhitespaceOnly
+            self.hasSignificantPreview = dc.hasSignificantPreview
+            self.hasRenderablePlainText = dc.hasRenderablePlainText
+            self.plainTextAppearsToBeHTMLMarkup = dc.plainTextAppearsToBeHTMLMarkup
+            return
+        }
+
+        let rt = entry.richText
+        self._richText = .some(rt)
+
+        guard let attr = rt else {
+            self.isOnlyObjectReplacements = false
+            self.attachmentImageData = nil
+            self.foregroundIsLight = nil
+            self.isWhitespaceOnly = false
+            self.hasSignificantPreview = false
+            self.hasRenderablePlainText = entry.hasRenderablePlainText
+            self.plainTextAppearsToBeHTMLMarkup = entry.plainTextAppearsToBeHTMLMarkup
+            return
+        }
+
+        let s = attr.string
+
+        let onlyObj = !s.isEmpty && s.contains("\u{FFFC}") &&
+                      s.allSatisfy { $0 == "\u{FFFC}" || $0.isWhitespace }
+        self.isOnlyObjectReplacements = onlyObj
+
+        if onlyObj {
+            var data: Data?
+            attr.enumerateAttribute(.attachment,
+                in: NSRange(location: 0, length: attr.length)
+            ) { value, _, stop in
+                guard let attachment = value as? NSTextAttachment else { return }
+                if let d = attachment.contents ?? attachment.fileWrapper?.regularFileContents {
+                    data = d; stop.pointee = true
+                } else if let tiff = attachment.image?.tiffRepresentation {
+                    data = tiff; stop.pointee = true
+                }
+            }
+            self.attachmentImageData = data
+        } else {
+            self.attachmentImageData = nil
+        }
+
+        if attr.length > 0 {
+            let sampleLen = min(attr.length, 500)
+            let sampleRange = NSRange(location: 0, length: sampleLen)
+            var totalLuminance: CGFloat = 0
+            var sampledChars = 0
+            var coloredIndices = IndexSet()
+
+            attr.enumerateAttribute(.foregroundColor, in: sampleRange) { value, range, _ in
+                guard let color = value as? NSColor,
+                      let srgb = color.usingColorSpace(.sRGB) else { return }
+                let lum = 0.2126 * srgb.redComponent + 0.7152 * srgb.greenComponent + 0.0722 * srgb.blueComponent
+                totalLuminance += lum * CGFloat(range.length)
+                sampledChars += range.length
+                coloredIndices.insert(integersIn: range.location..<(range.location + range.length))
+            }
+
+            let linkBlueLuminance: CGFloat = 0.07
+            attr.enumerateAttribute(.link, in: sampleRange) { value, range, _ in
+                guard value != nil else { return }
+                for i in range.location..<(range.location + range.length) {
+                    if !coloredIndices.contains(i) {
+                        totalLuminance += linkBlueLuminance
+                        sampledChars += 1
+                    }
+                }
+            }
+
+            self.foregroundIsLight = sampledChars > 0
+                ? (totalLuminance / CGFloat(sampledChars)) > 0.6
+                : nil
+        } else {
+            self.foregroundIsLight = nil
+        }
+
+        let wsOnly = !s.isEmpty && s.allSatisfy(\.isWhitespace)
+        self.isWhitespaceOnly = wsOnly
+        self.hasSignificantPreview = !s.isEmpty && !wsOnly
+        self.hasRenderablePlainText = entry.hasRenderablePlainText
+        self.plainTextAppearsToBeHTMLMarkup = entry.plainTextAppearsToBeHTMLMarkup
+    }
+}
 
 struct ClipboardEntryRow: View {
     let entry: ClipboardEntry
@@ -13,29 +171,33 @@ struct ClipboardEntryRow: View {
     var cardWidth: CGFloat { Self.baseWidth * zoom }
     var cardHeight: CGFloat { Self.baseHeight * zoom }
 
-    private var centerContent: Bool {
-        entry.hasImage || (entry.hasFileURLs && entry.mediaFileType != .other)
-    }
-
-    private var fixedHeight: Bool { centerContent }
-
-    private var cardFillColor: Color {
-        if let bg = entry.richTextBackgroundColor {
-            let base = Color(nsColor: bg)
+    private static func fillColor(foregroundIsLight: Bool?, isSelected: Bool) -> Color {
+        if let isLight = foregroundIsLight {
+            let base: Color = isLight ? .black : .white
             return isSelected ? base.opacity(0.6) : base.opacity(0.5)
         }
         return isSelected ? Color.primary.opacity(0.15) : Color.primary.opacity(0.05)
     }
 
     var body: some View {
-        entryPreview
-            .frame(maxWidth: .infinity, maxHeight: fixedHeight ? .infinity : nil,
-                   alignment: fixedHeight ? .center : .topLeading)
+        let ds = DisplayStateCache.shared.get(entry.id) ?? {
+            let state = CardDisplayState(entry: entry)
+            DisplayStateCache.shared.set(state, for: entry.id)
+            return state
+        }()
+        let center = entry.hasImage ||
+                     (entry.hasFileURLs && entry.mediaFileType != .other) ||
+                     (ds.isOnlyObjectReplacements && ds.attachmentImageData != nil)
+        let fill = Self.fillColor(foregroundIsLight: ds.foregroundIsLight, isSelected: isSelected)
+
+        entryPreview(ds: ds)
+            .frame(maxWidth: .infinity, maxHeight: center ? .infinity : nil,
+                   alignment: center ? .center : .topLeading)
             .padding(9 * zoom)
-            .frame(width: cardWidth, height: fixedHeight ? cardHeight : nil)
+            .frame(width: cardWidth, height: center ? cardHeight : nil)
             .background(
                 RoundedRectangle(cornerRadius: 10 * zoom)
-                    .fill(cardFillColor)
+                    .fill(fill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10 * zoom)
@@ -45,19 +207,25 @@ struct ClipboardEntryRow: View {
     }
 
     @ViewBuilder
-    private var entryPreview: some View {
+    private func entryPreview(ds: CardDisplayState) -> some View {
         if entry.isConcealed {
             concealedPreview
         } else if entry.hasImage {
             imagePreview
         } else if entry.hasFileURLs {
             mediaFilePreview
-        } else if entry.richTextIsWhitespaceOnlyForPreview, let rich = entry.richText {
+        } else if ds.isOnlyObjectReplacements, let attachData = ds.attachmentImageData {
+            AnimatedDataImageView(data: attachData)
+                .clipShape(RoundedRectangle(cornerRadius: 4 * zoom))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        } else if ds.isWhitespaceOnly, let rich = ds.richText {
             invisiblesTextPreview(rich.string)
-        } else if entry.hasSignificantRichTextPreview, let rich = entry.richText {
+        } else if ds.hasSignificantPreview, let rich = ds.richText {
             richTextPreview(rich)
-        } else if entry.hasRenderablePlainText, let text = entry.plainText {
-            if ClipboardInvisibles.plainTextNeedsInvisiblesPreview(text) {
+        } else if ds.hasRenderablePlainText, let text = entry.plainText {
+            if ds.plainTextAppearsToBeHTMLMarkup {
+                typeAwareFallbackPreview
+            } else if ClipboardInvisibles.plainTextNeedsInvisiblesPreview(text) {
                 invisiblesTextPreview(text)
             } else {
                 textPreview(text)
@@ -69,7 +237,6 @@ struct ClipboardEntryRow: View {
 
     @ViewBuilder
     private var mediaFilePreview: some View {
-        let _ = log.debug("UI", "Rendering file preview: \(entry.mediaFileURL?.lastPathComponent ?? "?") → \(entry.mediaFileType)", emoji: "📎")
         switch entry.mediaFileType {
         case .image:
             if let url = entry.mediaFileURL {
@@ -111,10 +278,25 @@ struct ClipboardEntryRow: View {
             attributedString: nsAttr.attributedSubstring(from: NSRange(location: 0, length: min(nsAttr.length, 500)))
         )
         truncated.removeAttribute(.backgroundColor, range: NSRange(location: 0, length: truncated.length))
+        var maxFontSize: CGFloat = 0
+        truncated.enumerateAttribute(.font, in: NSRange(location: 0, length: truncated.length)) { value, _, _ in
+            if let font = value as? NSFont {
+                maxFontSize = max(maxFontSize, font.pointSize)
+            }
+        }
+        let fontScale: CGFloat = maxFontSize > 24 ? 24 / maxFontSize : 1
+        let serifDefaults: Set<String> = ["Times New Roman", "Times", ".AppleSystemUIFontSerif"]
         truncated.enumerateAttribute(.font, in: NSRange(location: 0, length: truncated.length)) { value, range, _ in
             if let font = value as? NSFont {
-                let scaled = NSFont(descriptor: font.fontDescriptor, size: font.pointSize * zoom)
-                if let scaled { truncated.addAttribute(.font, value: scaled, range: range) }
+                let pointSize = max(font.pointSize * fontScale, 12) * zoom
+                if serifDefaults.contains(font.familyName ?? "") {
+                    truncated.addAttribute(.font, value: NSFont.systemFont(ofSize: pointSize), range: range)
+                } else {
+                    let scaled = NSFont(descriptor: font.fontDescriptor, size: pointSize)
+                    if let scaled { truncated.addAttribute(.font, value: scaled, range: range) }
+                }
+            } else {
+                truncated.addAttribute(.font, value: NSFont.systemFont(ofSize: 14 * zoom), range: range)
             }
         }
         let swiftAttr = try? AttributedString(truncated, including: \.appKit)
@@ -166,10 +348,8 @@ struct ClipboardEntryRow: View {
 
     @ViewBuilder
     private var imagePreview: some View {
-        if let nsImage = entry.image {
-            Image(nsImage: nsImage)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
+        if let data = entry.imageData {
+            AnimatedDataImageView(data: data)
                 .clipShape(RoundedRectangle(cornerRadius: 4 * zoom))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         } else {

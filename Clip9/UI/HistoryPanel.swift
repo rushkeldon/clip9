@@ -10,7 +10,6 @@ class HistoryPanel: NSPanel {
     static let panelPadding: CGFloat = 4
     static let arrowZoneHeight: CGFloat = 30
 
-    private var zoomObserver: NSObjectProtocol?
     private var lastItemCount: Int = 0
 
     static var panelWidth: CGFloat {
@@ -53,29 +52,50 @@ class HistoryPanel: NSPanel {
         let hostingView = NSHostingView(rootView: AnyView(panelView))
         contentView = hostingView
         scrollState.panelContentView = hostingView
+        scrollState.onContentHeightChanged = { [weak self] contentHeight in
+            self?.resizeToContentHeight(contentHeight)
+        }
         log.info("Panel", "HistoryPanel initialized (activating, floating)", emoji: "🏠")
+    }
+
+    private func resizeToContentHeight(_ contentHeight: CGFloat) {
+        guard isVisible else { return }
+        let screenHeight = (screen ?? NSScreen.main)?.visibleFrame.height ?? 800
+        let maxHeight = screenHeight - 8
+        let newHeight = min(contentHeight, maxHeight)
+        guard abs(newHeight - frame.height) > 1 else { return }
+        let topY = frame.maxY
+        setFrame(NSRect(x: frame.origin.x, y: topY - newHeight, width: frame.width, height: newHeight), display: true)
+        log.debug("Panel", "Resized to fit content: \(Int(frame.width))x\(Int(newHeight))", emoji: "📐")
     }
 
     func updateSize(itemCount: Int) {
         lastItemCount = itemCount
-        let zoom = CGFloat(UserDefaults.standard.object(forKey: "baseZoomLevel") as? Double ?? 1.0)
         let width = Self.panelWidth
 
-        let height: CGFloat
         if itemCount == 0 {
-            height = 200
-        } else {
-            let cardsHeight = CGFloat(itemCount) * ClipboardEntryRow.baseHeight * zoom
-            let spacingHeight = CGFloat(max(0, itemCount - 1)) * Self.cardSpacing * zoom
-            height = cardsHeight + spacingHeight + Self.panelPadding * 2 * zoom + Self.arrowZoneHeight
+            setContentSize(NSSize(width: width, height: 200))
+            log.debug("Panel", "Panel resized for 0 items: \(Int(width))×200", emoji: "📐")
+            return
         }
 
-        let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
+        // Use measured content height when available; fall back to estimate
+        let screenHeight = (screen ?? NSScreen.main)?.visibleFrame.height ?? 800
         let maxHeight = screenHeight - 8
-        let finalHeight = min(height, maxHeight)
 
-        setContentSize(NSSize(width: width, height: finalHeight))
-        log.debug("Panel", "Panel resized for \(itemCount) items: \(Int(width))×\(Int(finalHeight))", emoji: "📐")
+        if scrollState.contentHeight > 0 {
+            let finalHeight = min(scrollState.contentHeight, maxHeight)
+            setContentSize(NSSize(width: width, height: finalHeight))
+            log.debug("Panel", "Panel resized for \(itemCount) items (measured): \(Int(width))×\(Int(finalHeight))", emoji: "📐")
+        } else {
+            let zoom = CGFloat(UserDefaults.standard.object(forKey: "baseZoomLevel") as? Double ?? 1.0)
+            let cardsHeight = CGFloat(itemCount) * ClipboardEntryRow.baseHeight * zoom
+            let spacingHeight = CGFloat(max(0, itemCount - 1)) * Self.cardSpacing * zoom
+            let height = cardsHeight + spacingHeight + Self.panelPadding * 2 * zoom + Self.arrowZoneHeight
+            let finalHeight = min(height, maxHeight)
+            setContentSize(NSSize(width: width, height: finalHeight))
+            log.debug("Panel", "Panel resized for \(itemCount) items (estimated): \(Int(width))×\(Int(finalHeight))", emoji: "📐")
+        }
     }
 
     override func close() {
@@ -84,5 +104,6 @@ class HistoryPanel: NSPanel {
         scrollState.stopScrolling()
         scrollState.clearMouseHitTestState()
         scrollState.selectedIndex = nil
+        scrollState.resetToTop()
     }
 }

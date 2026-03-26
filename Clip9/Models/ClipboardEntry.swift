@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
 struct PasteboardItemData: Sendable {
     let types: [NSPasteboard.PasteboardType]
@@ -71,11 +72,121 @@ enum MediaFileType: CustomStringConvertible {
     }
 }
 
+/// Pre-computed display-cascade decisions persisted as display_cache.json.
+/// Avoids expensive RTF/HTML parsing on every card render.
+struct DisplayCache: Codable, Sendable {
+    let foregroundIsLight: Bool?
+    let isOnlyObjectReplacements: Bool
+    let attachmentImageData: Data?
+    let isWhitespaceOnly: Bool
+    let hasSignificantPreview: Bool
+    let hasRenderablePlainText: Bool
+    let plainTextAppearsToBeHTMLMarkup: Bool
+    let version: Int
+
+    static let currentVersion = 2
+
+    /// Compute all display decisions from a ClipboardEntry in a single pass.
+    static func compute(from entry: ClipboardEntry) -> DisplayCache {
+        let rt = entry.richText
+
+        var foregroundIsLight: Bool? = nil
+        var isOnlyObj = false
+        var attachData: Data? = nil
+        var wsOnly = false
+        var hasSigPreview = false
+
+        if let attr = rt {
+            let s = attr.string
+
+            let onlyObj = !s.isEmpty && s.contains("\u{FFFC}") &&
+                          s.allSatisfy { $0 == "\u{FFFC}" || $0.isWhitespace }
+            isOnlyObj = onlyObj
+
+            if onlyObj {
+                var data: Data?
+                attr.enumerateAttribute(.attachment,
+                    in: NSRange(location: 0, length: attr.length)
+                ) { value, _, stop in
+                    guard let attachment = value as? NSTextAttachment else { return }
+                    if let d = attachment.contents ?? attachment.fileWrapper?.regularFileContents {
+                        data = d; stop.pointee = true
+                    } else if let tiff = attachment.image?.tiffRepresentation {
+                        data = tiff; stop.pointee = true
+                    }
+                }
+                attachData = data
+            }
+
+            if attr.length > 0 {
+                let sampleLen = min(attr.length, 500)
+                let sampleRange = NSRange(location: 0, length: sampleLen)
+                var totalLuminance: CGFloat = 0
+                var sampledChars = 0
+                var coloredIndices = IndexSet()
+
+                attr.enumerateAttribute(.foregroundColor, in: sampleRange) { value, range, _ in
+                    guard let color = value as? NSColor,
+                          let srgb = color.usingColorSpace(.sRGB) else { return }
+                    let lum = 0.2126 * srgb.redComponent + 0.7152 * srgb.greenComponent + 0.0722 * srgb.blueComponent
+                    totalLuminance += lum * CGFloat(range.length)
+                    sampledChars += range.length
+                    coloredIndices.insert(integersIn: range.location..<(range.location + range.length))
+                }
+
+                let linkBlueLuminance: CGFloat = 0.07
+                attr.enumerateAttribute(.link, in: sampleRange) { value, range, _ in
+                    guard value != nil else { return }
+                    for i in range.location..<(range.location + range.length) {
+                        if !coloredIndices.contains(i) {
+                            totalLuminance += linkBlueLuminance
+                            sampledChars += 1
+                        }
+                    }
+                }
+
+                foregroundIsLight = sampledChars > 0
+                    ? (totalLuminance / CGFloat(sampledChars)) > 0.6
+                    : nil
+            }
+
+            let isWS = !s.isEmpty && s.allSatisfy(\.isWhitespace)
+            wsOnly = isWS
+            hasSigPreview = !s.isEmpty && !isWS
+        }
+
+        let hasRenderable: Bool
+        let looksLikeHTML: Bool
+        if let text = entry.plainText, !text.isEmpty {
+            hasRenderable = true
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(20).lowercased()
+            looksLikeHTML = trimmed.hasPrefix("<meta ") ||
+                            trimmed.hasPrefix("<!doctype") ||
+                            trimmed.hasPrefix("<html")
+        } else {
+            hasRenderable = false
+            looksLikeHTML = false
+        }
+
+        return DisplayCache(
+            foregroundIsLight: foregroundIsLight,
+            isOnlyObjectReplacements: isOnlyObj,
+            attachmentImageData: attachData,
+            isWhitespaceOnly: wsOnly,
+            hasSignificantPreview: hasSigPreview,
+            hasRenderablePlainText: hasRenderable,
+            plainTextAppearsToBeHTMLMarkup: looksLikeHTML,
+            version: currentVersion
+        )
+    }
+}
+
 struct ClipboardEntry: Identifiable, Sendable {
     let id: UUID
     let timestamp: Date
     let items: [PasteboardItemData]
     let isConcealed: Bool
+    let displayCache: DisplayCache?
 
     var totalBytes: Int {
         items.reduce(0) { total, item in
@@ -103,46 +214,46 @@ struct ClipboardEntry: Identifiable, Sendable {
         return nil
     }
 
-    /// Dominant background color embedded in the rich text, if any.
-    var richTextBackgroundColor: NSColor? {
-        guard let attr = richText, attr.length > 0 else { return nil }
-        return attr.attribute(.backgroundColor, at: 0, effectiveRange: nil) as? NSColor
-    }
-
     /// Best-effort plain text extraction from the first item.
     var plainText: String? {
         guard let item = items.first else { return nil }
-        let textTypes: [NSPasteboard.PasteboardType] = [.string, .rtf, .html]
-        for type in textTypes {
-            if let data = item.dataByType[type] {
-                if type == .string {
-                    return String(data: data, encoding: .utf8)
-                }
-                if let attributed = NSAttributedString(rtf: data, documentAttributes: nil) {
-                    return attributed.string
-                }
-                return String(data: data, encoding: .utf8)
+        if let data = item.dataByType[.string] {
+            return String(data: data, encoding: .utf8)
+        }
+        if let data = item.dataByType[.rtf],
+           let attributed = NSAttributedString(rtf: data, documentAttributes: nil) {
+            return attributed.string
+        }
+        if let data = item.dataByType[.html],
+           let attributed = NSAttributedString(html: data, documentAttributes: nil) {
+            let text = attributed.string
+            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return text
             }
         }
         return nil
     }
 
-    /// Whether the first item contains image data.
+    /// Whether the first item contains image data (any UTI conforming to public.image).
     var hasImage: Bool {
         guard let item = items.first else { return false }
-        let imageTypes: [NSPasteboard.PasteboardType] = [.tiff, .png]
-        return item.types.contains(where: imageTypes.contains)
+        return item.types.contains { UTType($0.rawValue)?.conforms(to: .image) == true }
+    }
+
+    /// Raw image bytes from the first item, if any type conforms to public.image.
+    var imageData: Data? {
+        guard let item = items.first else { return nil }
+        for type in item.types {
+            guard UTType(type.rawValue)?.conforms(to: .image) == true else { continue }
+            if let data = item.dataByType[type] { return data }
+        }
+        return nil
     }
 
     /// Extract an NSImage from the first item, if possible.
     var image: NSImage? {
-        guard let item = items.first else { return nil }
-        for type in [NSPasteboard.PasteboardType.tiff, .png] {
-            if let data = item.dataByType[type] {
-                return NSImage(data: data)
-            }
-        }
-        return nil
+        guard let data = imageData else { return nil }
+        return NSImage(data: data)
     }
 
     /// Whether the first item contains file URL references.
@@ -216,9 +327,46 @@ extension ClipboardEntry {
         return Self.isWhitespaceOnlyString(r.string)
     }
 
+    /// Rich text whose visible characters are only object replacement chars (\u{FFFC}) and whitespace,
+    /// indicating the content is embedded attachments (e.g. stickers) with no readable text.
+    var richTextIsOnlyObjectReplacements: Bool {
+        guard let r = richText else { return false }
+        let s = r.string
+        guard !s.isEmpty else { return false }
+        return s.contains("\u{FFFC}") &&
+               s.allSatisfy { $0 == "\u{FFFC}" || $0.isWhitespace }
+    }
+
+    /// Image data extracted from the first NSTextAttachment in the rich text, if any.
+    var richTextAttachmentImageData: Data? {
+        guard let attr = richText else { return nil }
+        var result: Data?
+        attr.enumerateAttribute(.attachment,
+            in: NSRange(location: 0, length: attr.length)
+        ) { value, _, stop in
+            guard let attachment = value as? NSTextAttachment else { return }
+            if let data = attachment.contents ?? attachment.fileWrapper?.regularFileContents {
+                result = data; stop.pointee = true
+            } else if let tiff = attachment.image?.tiffRepresentation {
+                result = tiff; stop.pointee = true
+            }
+        }
+        return result
+    }
+
     var hasRenderablePlainText: Bool {
         guard let t = plainText else { return false }
         return !t.isEmpty
+    }
+
+    /// True when the `.string` pasteboard type itself contains raw HTML markup
+    /// (some apps duplicate HTML onto the string type). These should not be shown as text.
+    var plainTextAppearsToBeHTMLMarkup: Bool {
+        guard let text = plainText else { return false }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(20).lowercased()
+        return trimmed.hasPrefix("<meta ") ||
+               trimmed.hasPrefix("<!doctype") ||
+               trimmed.hasPrefix("<html")
     }
 
     /// Log-friendly line when the user highlights an entry (mouse or keyboard).

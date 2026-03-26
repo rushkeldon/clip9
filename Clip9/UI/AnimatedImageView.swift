@@ -29,3 +29,21 @@ struct AnimatedImageView: NSViewRepresentable {
         }
     }
 }
+
+/// Renders image data with animation support (GIF, APNG) using NSImageView.
+struct AnimatedDataImageView: NSViewRepresentable {
+    let data: Data
+
+    func makeNSView(context: Context) -> NSImageView {
+        let imageView = NSImageView()
+        imageView.animates = true
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.imageAlignment = .alignCenter
+        imageView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        imageView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        imageView.image = NSImage(data: data)
+        return imageView
+    }
+
+    func updateNSView(_ nsView: NSImageView, context: Context) {}
+}

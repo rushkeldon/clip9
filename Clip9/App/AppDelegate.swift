@@ -13,6 +13,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var settingsWindow: NSWindow?
     private var settingsObservers: [NSObjectProtocol] = []
+    private var lastSyncedHistorySize: Int?
+    private var lastSyncedStorageCap: Double?
 
     /// When the history panel was shown from status-menu dismiss (guards a duplicate toggle closing it in the same gesture).
     private var historyPanelOpenedFromMenuDismissAt: Date?
@@ -154,7 +156,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
               let buttonWindow = button.window else { return }
         let buttonRect = button.convert(button.bounds, to: nil)
         let screenRect = buttonWindow.convertToScreen(buttonRect)
-        let screen = buttonWindow.screen ?? NSScreen.main ?? NSScreen.screens.first!
+        guard let screen = buttonWindow.screen ?? NSScreen.main ?? NSScreen.screens.first else { return }
         let visibleFrame = screen.visibleFrame
         let idealX = screenRect.minX
         let x = min(idealX, visibleFrame.maxX - window.frame.width)
@@ -251,7 +253,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let oldMinY = panel.frame.minY
         panel.updateSize(itemCount: clipboardMonitor.history.count)
 
-        let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first!
+        guard let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first else { return }
         let visibleFrame = screen.visibleFrame
         let newWidth = panel.frame.width
         let newHeight = panel.frame.height
@@ -274,7 +276,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         StorageManager.shared.maxEntryCount = historySize
         StorageManager.shared.storageCapBytes = Int(storageCap * 1_073_741_824)
 
-        log.debug("App", "Settings synced: history=\(historySize), cap=\(storageCap)GB", emoji: "⚙️")
+        if historySize != lastSyncedHistorySize || storageCap != lastSyncedStorageCap {
+            log.debug("App", "Settings synced: history=\(historySize), cap=\(storageCap)GB", emoji: "⚙️")
+            lastSyncedHistorySize = historySize
+            lastSyncedStorageCap = storageCap
+        }
     }
 
     private func observeSettingsChanges() {
@@ -392,7 +398,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openSupport() {
         log.info("App", "Opening support URL", emoji: "🔗")
-        if let url = URL(string: "https://clip9.app/support") {
+        if let url = URL(string: "https://appcloud9.com/clip9/support") {
             NSWorkspace.shared.open(url)
         }
     }

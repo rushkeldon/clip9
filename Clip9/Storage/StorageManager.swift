@@ -70,6 +70,11 @@ class StorageManager {
             }
         }
 
+        if let cache = entry.displayCache,
+           let cacheData = try? JSONEncoder().encode(cache) {
+            try cacheData.write(to: tmpDir.appendingPathComponent("display_cache.json"))
+        }
+
         if fileManager.fileExists(atPath: entryDir.path) {
             try fileManager.removeItem(at: entryDir)
         }
@@ -116,7 +121,8 @@ class StorageManager {
                 id: uuid,
                 timestamp: Date(timeIntervalSince1970: meta.timestamp),
                 items: [],
-                isConcealed: true
+                isConcealed: true,
+                displayCache: nil
             )
         }
 
@@ -146,12 +152,23 @@ class StorageManager {
             }
         }
 
+        let displayCache = loadDisplayCache(entryDir: entryDir)
+
         return ClipboardEntry(
             id: uuid,
             timestamp: Date(timeIntervalSince1970: meta.timestamp),
             items: items,
-            isConcealed: false
+            isConcealed: false,
+            displayCache: displayCache
         )
+    }
+
+    // MARK: - Display Cache
+
+    private func loadDisplayCache(entryDir: URL) -> DisplayCache? {
+        let url = entryDir.appendingPathComponent("display_cache.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(DisplayCache.self, from: data)
     }
 
     // MARK: - Index

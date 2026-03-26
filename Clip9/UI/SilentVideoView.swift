@@ -48,10 +48,9 @@ class SilentVideoNSView: NSView {
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
             queue: .main
-        ) { [weak player, filename] _ in
+        ) { [weak player] _ in
             player?.seek(to: .zero)
             player?.play()
-            log.debug("Media", "Video looped: \(filename)", emoji: "🔁")
         }
 
         player.play()
@@ -59,7 +58,7 @@ class SilentVideoNSView: NSView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+    required init?(coder: NSCoder) { fatalError("SilentVideoNSView does not support init(coder:)") }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -113,5 +112,9 @@ class SilentVideoNSView: NSView {
         visibilityObserver = nil
         player = nil
         log.debug("Media", "SilentVideoView torn down", emoji: "⏹️")
+    }
+
+    deinit {
+        tearDown()
     }
 }

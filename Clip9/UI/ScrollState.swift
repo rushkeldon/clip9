@@ -10,7 +10,13 @@ class ScrollState {
             reselectUnderMouseIfPossible()
         }
     }
-    var contentHeight: CGFloat = 0.0
+    var contentHeight: CGFloat = 0.0 {
+        didSet {
+            guard contentHeight != oldValue, contentHeight > 0 else { return }
+            onContentHeightChanged?(contentHeight)
+        }
+    }
+    var onContentHeightChanged: ((CGFloat) -> Void)?
     var viewHeight: CGFloat = 400.0
 
     var selectedIndex: Int? = nil
@@ -104,9 +110,6 @@ class ScrollState {
         let fromTop = viewHeight - mouseY
         // Bottom strip is the hover-scroll arrow, not part of the card stack.
         guard fromTop < viewportH - 0.5 else {
-            if selectedIndex != nil {
-                log.debug("Mouse", "select NONE (in arrow zone fromTop=\(Int(fromTop)) viewportH=\(Int(viewportH)))", emoji: "👆")
-            }
             selectedIndex = nil
             return
         }
@@ -135,14 +138,6 @@ class ScrollState {
             }
         }
 
-        if selectedIndex != bestIndex {
-            let gapNote = bestDistance > 0.5 ? " nearest gap=\(Int(bestDistance))" : ""
-            log.debug(
-                "Mouse",
-                "select card \(bestIndex) (mouseY=\(Int(mouseY)) fromTop=\(Int(fromTop)) scrollOrigin=\(Int(scrollOriginY)) contentY=\(Int(contentY)))\(gapNote)",
-                emoji: "👆"
-            )
-        }
         selectedIndex = bestIndex
     }
 
@@ -162,6 +157,15 @@ class ScrollState {
     func clearMouseHitTestState() {
         lastMouseYInOverlay = nil
         lastOverlayHeight = nil
+    }
+
+    func resetToTop() {
+        scrollOffset = 0
+        if let scrollView = findScrollView() {
+            let clipView = scrollView.contentView
+            clipView.setBoundsOrigin(.zero)
+            scrollView.reflectScrolledClipView(clipView)
+        }
     }
 
     func stopScrolling() {
@@ -239,5 +243,9 @@ class ScrollState {
             if let found = findNSScrollView(in: subview) { return found }
         }
         return nil
+    }
+
+    deinit {
+        scrollTimer?.invalidate()
     }
 }
