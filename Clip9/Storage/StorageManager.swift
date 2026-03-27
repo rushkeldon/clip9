@@ -8,7 +8,8 @@ class StorageManager {
     static let shared = StorageManager()
 
     var maxEntryCount: Int = 100
-    var storageCapBytes: Int = 1_073_741_824  // ~1 GB
+    var storageCapBytes: Int = 5_368_709_120  // ~5 GB
+    private(set) var currentStorageBytes: Int = 0
 
     private let fileManager = FileManager.default
     private let historyDirectory: URL
@@ -102,7 +103,8 @@ class StorageManager {
         if failedCount > 0 {
             log.warn("Storage", "\(failedCount) entries failed to load")
         }
-        log.info("Storage", "Loaded \(entries.count)/\(uuids.count) entries successfully", emoji: "✅")
+        currentStorageBytes = computeTotalSize(uuids: uuids)
+        log.info("Storage", "Loaded \(entries.count)/\(uuids.count) entries successfully (storage: \(currentStorageBytes / 1024)KB)", emoji: "✅")
         return entries
     }
 
@@ -225,7 +227,9 @@ class StorageManager {
 
     func deleteEntry(uuidString: String) {
         let entryDir = historyDirectory.appendingPathComponent(uuidString, isDirectory: true)
+        let entrySize = directorySize(at: entryDir)
         try? fileManager.removeItem(at: entryDir)
+        currentStorageBytes = max(0, currentStorageBytes - entrySize)
 
         if var uuids = try? JSONDecoder().decode(
             [String].self,
@@ -244,6 +248,7 @@ class StorageManager {
             try? fileManager.removeItem(at: entryDir)
         }
         try? saveIndex([])
+        currentStorageBytes = 0
         log.info("Storage", "All entries deleted (\(uuids.count) removed)", emoji: "🗑️")
     }
 
@@ -269,6 +274,8 @@ class StorageManager {
             totalSize -= entrySize
             evictedCount += 1
         }
+
+        currentStorageBytes = totalSize
 
         if evictedCount > 0 {
             try saveIndex(uuids)

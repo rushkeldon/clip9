@@ -241,13 +241,21 @@ struct ClipboardEntry: Identifiable, Sendable {
     }
 
     /// Raw image bytes from the first item, if any type conforms to public.image.
+    /// Deprioritizes com.apple.icns (Finder icon metadata) so that actual image
+    /// content (GIF, PNG, etc.) is returned when both are present.
     var imageData: Data? {
         guard let item = items.first else { return nil }
+        let icnsType = NSPasteboard.PasteboardType("com.apple.icns")
+        var icnsFallback: Data?
         for type in item.types {
             guard UTType(type.rawValue)?.conforms(to: .image) == true else { continue }
+            if type == icnsType {
+                icnsFallback = item.dataByType[type]
+                continue
+            }
             if let data = item.dataByType[type] { return data }
         }
-        return nil
+        return icnsFallback
     }
 
     /// Extract an NSImage from the first item, if possible.
@@ -380,5 +388,36 @@ extension ClipboardEntry {
             plainSnippet = "nil"
         }
         return "items=\(items.count) totalBytes=\(totalBytes) firstItemTypes=[\(firstItemTypes)] plainText=\(plainSnippet)"
+    }
+}
+
+// MARK: - File Data Helpers
+
+extension ClipboardEntry {
+
+    /// Returns the stored file content bytes for a file-URL entry by looking up
+    /// the blob stored under the file's native UTI type.
+    var fileData: Data? {
+        guard let url = mediaFileURL,
+              let utType = UTType(filenameExtension: url.pathExtension) else { return nil }
+        let fileType = NSPasteboard.PasteboardType(utType.identifier)
+        return items.first?.dataByType[fileType]
+    }
+
+    /// Writes the stored file data to a temp directory using the original filename,
+    /// returning the URL for playback. Returns nil if no stored data is available.
+    func writeTempFile() -> URL? {
+        guard let data = fileData,
+              let filename = mediaFileURL?.lastPathComponent else { return nil }
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Clip9", isDirectory: true)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let tempURL = tempDir.appendingPathComponent(filename)
+        do {
+            try data.write(to: tempURL, options: .atomic)
+            return tempURL
+        } catch {
+            return nil
+        }
     }
 }

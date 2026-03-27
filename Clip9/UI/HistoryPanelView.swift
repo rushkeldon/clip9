@@ -35,6 +35,7 @@ struct HistoryPanelView: View {
     private var arrowZoneHeight: CGFloat { HistoryPanel.arrowZoneHeight }
 
     var body: some View {
+        let _ = monitor.displayRevision
         ZStack(alignment: .bottom) {
             Group {
                 if monitor.history.isEmpty {

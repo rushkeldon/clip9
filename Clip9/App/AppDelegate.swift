@@ -96,6 +96,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func presentHistoryPanel() {
         guard let panel = historyPanel else { return }
+        clipboardMonitor.forceViewRefresh()
+        if let first = clipboardMonitor.history.first {
+            let snippet = first.plainText.map { LogService.truncate($0) } ?? "non-text"
+            log.debug("App", "Top entry: \(first.id) — \(snippet)", emoji: "🔝")
+        }
         panel.updateSize(itemCount: clipboardMonitor.history.count)
         positionPanelBelowStatusItem(panel)
         panel.makeKeyAndOrderFront(nil)

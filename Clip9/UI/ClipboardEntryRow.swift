@@ -239,7 +239,11 @@ struct ClipboardEntryRow: View {
     private var mediaFilePreview: some View {
         switch entry.mediaFileType {
         case .image:
-            if let url = entry.mediaFileURL {
+            if let data = entry.fileData {
+                AnimatedDataImageView(data: data)
+                    .clipShape(RoundedRectangle(cornerRadius: 4 * zoom))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            } else if let url = entry.mediaFileURL {
                 AnimatedImageView(url: url)
                     .clipShape(RoundedRectangle(cornerRadius: 4 * zoom))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -247,7 +251,11 @@ struct ClipboardEntryRow: View {
                 genericFilePreview
             }
         case .video:
-            if let url = entry.mediaFileURL {
+            if let tempURL = entry.writeTempFile() {
+                SilentVideoView(url: tempURL)
+                    .clipShape(RoundedRectangle(cornerRadius: 4 * zoom))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            } else if let url = entry.mediaFileURL {
                 SilentVideoView(url: url)
                     .clipShape(RoundedRectangle(cornerRadius: 4 * zoom))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)

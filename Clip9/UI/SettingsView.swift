@@ -7,7 +7,8 @@ struct SettingsView: View {
     @AppStorage("launchAtLogin") private var launchAtLogin = true
     @AppStorage("baseZoomLevel") private var baseZoomLevel = 1.0
     @AppStorage("historySize") private var historySize = 100
-    @AppStorage("storageCapGB") private var storageCapGB = 1.0
+    @AppStorage("storageCapGB") private var storageCapGB = 5.0
+    @State private var currentUsageBytes: Int = 0
 
     var body: some View {
         Form {
@@ -36,9 +37,12 @@ struct SettingsView: View {
 
                 VStack(alignment: .leading) {
                     Text("Storage Cap: \(storageCapGB, specifier: "%.1f") GB")
-                    Slider(value: $storageCapGB, in: 0.1...10.0, step: 0.1) {
+                    Slider(value: $storageCapGB, in: 0.5...20.0, step: 0.5) {
                         Text("Storage Cap")
                     }
+                    Text("Current usage: \(formattedUsage)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -53,7 +57,17 @@ struct SettingsView: View {
         .frame(width: 420)
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
+            currentUsageBytes = StorageManager.shared.currentStorageBytes
             log.info("Settings", "Settings view opened", emoji: "⚙️")
+        }
+    }
+
+    private var formattedUsage: String {
+        let bytes = currentUsageBytes
+        if bytes >= 1_073_741_824 {
+            return String(format: "%.1f GB", Double(bytes) / 1_073_741_824)
+        } else {
+            return String(format: "%.0f MB", Double(bytes) / 1_048_576)
         }
     }
 

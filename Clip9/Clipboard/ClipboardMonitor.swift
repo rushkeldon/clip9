@@ -8,6 +8,7 @@ private let log = LogService.shared
 @Observable
 class ClipboardMonitor {
     private(set) var history: [ClipboardEntry] = []
+    private(set) var displayRevision: Int = 0
 
     var maxHistorySize: Int = 100
 
@@ -48,6 +49,11 @@ class ClipboardMonitor {
                 DisplayStateCache.shared.warmIfNeeded(entry: entry)
             }
         }
+    }
+
+    func forceViewRefresh() {
+        displayRevision += 1
+        log.debug("Clipboard", "Display revision bumped to \(displayRevision)", emoji: "🔃")
     }
 
     func stop() {
@@ -109,7 +115,7 @@ class ClipboardMonitor {
                 }
             }
 
-            Self.fetchImageFileData(into: &dataByType, types: &types, log: log)
+            Self.fetchFileData(into: &dataByType, types: &types, log: log)
 
             if !dataByType.isEmpty {
                 capturedItems.append(PasteboardItemData(types: types, dataByType: dataByType))
@@ -258,13 +264,13 @@ class ClipboardMonitor {
         log.info("Clipboard", "Deleted entry \(entry.id) from position \(index)", emoji: "🗑️")
     }
 
-    // MARK: - Image File Fetch
+    // MARK: - File Data Fetch
 
-    private static let maxImageFileFetchBytes = 50_000_000 // 50 MB
+    private static let maxFileFetchBytes = 200_000_000 // 200 MB
 
-    /// If the item contains a public.file-url pointing to an image, read the file and
-    /// store its bytes under the native UTI so the entry is self-contained.
-    private static func fetchImageFileData(
+    /// If the item contains a public.file-url, read the file and store its bytes
+    /// under the native UTI so the entry is self-contained after sandbox access expires.
+    private static func fetchFileData(
         into dataByType: inout [NSPasteboard.PasteboardType: Data],
         types: inout [NSPasteboard.PasteboardType],
         log: LogService
@@ -273,24 +279,23 @@ class ClipboardMonitor {
         guard let urlData = dataByType[fileURLType],
               let urlString = String(data: urlData, encoding: .utf8),
               let url = URL(string: urlString),
-              let utType = UTType(filenameExtension: url.pathExtension),
-              utType.conforms(to: .image) else { return }
+              let utType = UTType(filenameExtension: url.pathExtension) else { return }
 
-        let imageType = NSPasteboard.PasteboardType(utType.identifier)
-        guard dataByType[imageType] == nil else { return }
+        let fileType = NSPasteboard.PasteboardType(utType.identifier)
+        guard dataByType[fileType] == nil else { return }
 
         guard let fileData = try? Data(contentsOf: url) else {
-            log.warn("Clipboard", "Failed to read image file: \(url.lastPathComponent)")
+            log.warn("Clipboard", "Failed to read file: \(url.lastPathComponent)")
             return
         }
-        guard fileData.count <= maxImageFileFetchBytes else {
-            log.info("Clipboard", "Skipping image file fetch — \(url.lastPathComponent) exceeds \(maxImageFileFetchBytes / 1_000_000)MB cap (\(fileData.count) bytes)")
+        guard fileData.count <= maxFileFetchBytes else {
+            log.info("Clipboard", "Skipping file fetch — \(url.lastPathComponent) exceeds \(maxFileFetchBytes / 1_000_000)MB cap (\(fileData.count) bytes)")
             return
         }
 
-        dataByType[imageType] = fileData
-        types.append(imageType)
-        log.info("Clipboard", "Fetched image file data: \(url.lastPathComponent) (\(fileData.count) bytes, \(utType.identifier))")
+        dataByType[fileType] = fileData
+        types.append(fileType)
+        log.info("Clipboard", "Fetched file data: \(url.lastPathComponent) (\(fileData.count) bytes, \(utType.identifier))", emoji: "📁")
     }
 
     // MARK: - Clear

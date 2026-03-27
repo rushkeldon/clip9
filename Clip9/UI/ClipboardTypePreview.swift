@@ -1,3 +1,5 @@
+import AppKit
+
 /// SF Symbol + user-facing label when plain/rich/file/image previews do not apply.
 enum ClipboardTypePreview {
 
