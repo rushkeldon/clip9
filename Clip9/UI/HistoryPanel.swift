@@ -5,6 +5,7 @@ private let log = LogService.shared
 
 class HistoryPanel: NSPanel {
     let scrollState = ScrollState()
+    var onClose: (() -> Void)?
 
     static let cardSpacing: CGFloat = 4
     static let panelPadding: CGFloat = 4
@@ -17,7 +18,13 @@ class HistoryPanel: NSPanel {
         return ClipboardEntryRow.baseWidth * zoom + panelPadding * 2 * zoom
     }
 
-    init(monitor: ClipboardMonitor, onRestore: @escaping (ClipboardEntry) -> Void, onDelete: @escaping (ClipboardEntry) -> Void) {
+    init(
+        monitor: ClipboardMonitor,
+        onRestore: @escaping (ClipboardEntry) -> Void,
+        onDelete: @escaping (ClipboardEntry) -> Void,
+        onIncreaseLimit: @escaping (ClipboardEntry) -> Void,
+        onEvictForWhale: @escaping (ClipboardEntry) -> Void
+    ) {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: Self.panelWidth, height: 200),
             styleMask: [.titled, .fullSizeContentView],
@@ -47,6 +54,14 @@ class HistoryPanel: NSPanel {
             onDelete: { entry in
                 log.info("Panel", "▶ onDelete closure invoked for entry \(entry.id)", emoji: "🗑️")
                 onDelete(entry)
+            },
+            onIncreaseLimit: { entry in
+                log.info("Panel", "▶ onIncreaseLimit closure invoked for entry \(entry.id)", emoji: "📈")
+                onIncreaseLimit(entry)
+            },
+            onEvictForWhale: { entry in
+                log.info("Panel", "▶ onEvictForWhale closure invoked for entry \(entry.id)", emoji: "🧹")
+                onEvictForWhale(entry)
             }
         )
         let hostingView = NSHostingView(rootView: AnyView(panelView))
@@ -91,7 +106,8 @@ class HistoryPanel: NSPanel {
             let zoom = CGFloat(UserDefaults.standard.object(forKey: "baseZoomLevel") as? Double ?? 1.0)
             let cardsHeight = CGFloat(itemCount) * ClipboardEntryRow.baseHeight * zoom
             let spacingHeight = CGFloat(max(0, itemCount - 1)) * Self.cardSpacing * zoom
-            let height = cardsHeight + spacingHeight + Self.panelPadding * 2 * zoom + Self.arrowZoneHeight
+            let baseHeight = cardsHeight + spacingHeight + Self.panelPadding * 2 * zoom
+            let height = baseHeight + (baseHeight > maxHeight ? Self.arrowZoneHeight : 0)
             let finalHeight = min(height, maxHeight)
             setContentSize(NSSize(width: width, height: finalHeight))
             log.debug("Panel", "Panel resized for \(itemCount) items (estimated): \(Int(width))×\(Int(finalHeight))", emoji: "📐")
@@ -100,6 +116,7 @@ class HistoryPanel: NSPanel {
 
     override func close() {
         log.debug("Panel", "Panel closing", emoji: "🔽")
+        onClose?()
         super.close()
         scrollState.stopScrolling()
         scrollState.clearMouseHitTestState()

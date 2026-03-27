@@ -102,7 +102,7 @@ class ScrollState {
         if cachedScrollView == nil { _ = findScrollView() }
         guard !cardOffsets.isEmpty, cardOffsets.count == cardHeights.count else { return }
 
-        let arrowH = HistoryPanel.arrowZoneHeight
+        let arrowH = canScrollDown ? HistoryPanel.arrowZoneHeight : CGFloat(0)
         let viewportH = viewHeight - arrowH
         guard viewportH > 1 else { return }
 

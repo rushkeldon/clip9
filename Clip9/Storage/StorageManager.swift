@@ -8,7 +8,7 @@ class StorageManager {
     static let shared = StorageManager()
 
     var maxEntryCount: Int = 100
-    var storageCapBytes: Int = 5_368_709_120  // ~5 GB
+    var storageCapBytes: Int = 1_073_741_824  // ~1 GB
     private(set) var currentStorageBytes: Int = 0
 
     private let fileManager = FileManager.default
@@ -242,14 +242,10 @@ class StorageManager {
     }
 
     func deleteAllEntries() {
-        let uuids = loadIndex()
-        for uuid in uuids {
-            let entryDir = historyDirectory.appendingPathComponent(uuid, isDirectory: true)
-            try? fileManager.removeItem(at: entryDir)
-        }
-        try? saveIndex([])
+        try? fileManager.removeItem(at: historyDirectory)
+        try? fileManager.createDirectory(at: historyDirectory, withIntermediateDirectories: true)
         currentStorageBytes = 0
-        log.info("Storage", "All entries deleted (\(uuids.count) removed)", emoji: "🗑️")
+        log.info("Storage", "History directory wiped and recreated", emoji: "🗑️")
     }
 
     // MARK: - Eviction
@@ -257,9 +253,11 @@ class StorageManager {
     private func enforceEvictionLimits() throws {
         var uuids = loadIndex()
         var evictedCount = 0
+        let whaleIDStrings = Set(WhaleManager.shared.whaleIDs.map(\.uuidString))
 
         while uuids.count > maxEntryCount {
-            let oldest = uuids.removeLast()
+            guard let idx = uuids.lastIndex(where: { !whaleIDStrings.contains($0) }) else { break }
+            let oldest = uuids.remove(at: idx)
             let dir = historyDirectory.appendingPathComponent(oldest, isDirectory: true)
             try? fileManager.removeItem(at: dir)
             evictedCount += 1
@@ -267,7 +265,8 @@ class StorageManager {
 
         var totalSize = computeTotalSize(uuids: uuids)
         while totalSize > storageCapBytes, !uuids.isEmpty {
-            let oldest = uuids.removeLast()
+            guard let idx = uuids.lastIndex(where: { !whaleIDStrings.contains($0) }) else { break }
+            let oldest = uuids.remove(at: idx)
             let dir = historyDirectory.appendingPathComponent(oldest, isDirectory: true)
             let entrySize = directorySize(at: dir)
             try? fileManager.removeItem(at: dir)

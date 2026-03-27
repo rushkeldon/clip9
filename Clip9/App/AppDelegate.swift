@@ -96,6 +96,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func presentHistoryPanel() {
         guard let panel = historyPanel else { return }
+
+        if !WhaleManager.shared.whales.isEmpty {
+            WhaleManager.shared.decrementDisplayCounts()
+        }
+
         clipboardMonitor.forceViewRefresh()
         if let first = clipboardMonitor.history.first {
             let snippet = first.plainText.map { LogService.truncate($0) } ?? "non-text"
@@ -124,9 +129,60 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if let panel = self?.historyPanel {
                     panel.updateSize(itemCount: self?.clipboardMonitor.history.count ?? 0)
                 }
+            },
+            onIncreaseLimit: { [weak self] entry in
+                self?.handleIncreaseLimit(for: entry)
+            },
+            onEvictForWhale: { [weak self] entry in
+                self?.handleEvictForWhale(entry)
             }
         )
+        historyPanel?.onClose = { [weak self] in
+            self?.cleanupZombies()
+        }
         log.info("App", "History panel created", emoji: "🏠")
+    }
+
+    private func cleanupZombies() {
+        let zombieIDs = WhaleManager.shared.zombieIDs
+        guard !zombieIDs.isEmpty else { return }
+        for id in zombieIDs {
+            if let entry = clipboardMonitor.history.first(where: { $0.id == id }) {
+                clipboardMonitor.deleteEntry(entry)
+            }
+        }
+        log.info("App", "Silently deleted \(zombieIDs.count) zombie(s) on panel close", emoji: "💀")
+    }
+
+    private func handleIncreaseLimit(for entry: ClipboardEntry) {
+        let historyIDs = clipboardMonitor.history.map(\.id)
+        let softCapBytes = StorageManager.shared.storageCapBytes
+        let currentTotal = StorageManager.shared.currentStorageBytes
+        guard let newCapBytes = WhaleManager.shared.suggestedCapBytes(
+            for: entry.id,
+            historyOrder: historyIDs,
+            currentCapBytes: softCapBytes,
+            currentTotalBytes: currentTotal
+        ) else { return }
+
+        let newCapGB = Double(newCapBytes) / 1_073_741_824
+        UserDefaults.standard.set(newCapGB, forKey: "storageCapGB")
+        syncSettingsToComponents()
+        WhaleManager.shared.removeWhale(entry.id)
+        clipboardMonitor.forceViewRefresh()
+        log.info("App", "Storage cap increased to \(String(format: "%.1f", newCapGB)) GB for whale \(entry.id)", emoji: "📈")
+    }
+
+    private func handleEvictForWhale(_ entry: ClipboardEntry) {
+        clipboardMonitor.evictOldestNonWhales(targetBytes: StorageManager.shared.storageCapBytes)
+        if StorageManager.shared.currentStorageBytes <= StorageManager.shared.storageCapBytes {
+            WhaleManager.shared.removeWhale(entry.id)
+        }
+        clipboardMonitor.forceViewRefresh()
+        if let panel = historyPanel {
+            panel.updateSize(itemCount: clipboardMonitor.history.count)
+        }
+        log.info("App", "Evicted items to make room for whale \(entry.id)", emoji: "🧹")
     }
 
     private func toggleHistoryPanel() {

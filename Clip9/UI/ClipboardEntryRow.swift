@@ -185,35 +185,49 @@ struct ClipboardEntryRow: View {
             DisplayStateCache.shared.set(state, for: entry.id)
             return state
         }()
+        let whaleInfo = WhaleManager.shared.info(for: entry.id)
         let center = entry.hasImage ||
                      (entry.hasFileURLs && entry.mediaFileType != .other) ||
                      (ds.isOnlyObjectReplacements && ds.attachmentImageData != nil)
         let fill = Self.fillColor(foregroundIsLight: ds.foregroundIsLight, isSelected: isSelected)
 
-        entryPreview(ds: ds)
-            .frame(maxWidth: .infinity, maxHeight: center ? .infinity : nil,
-                   alignment: center ? .center : .topLeading)
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let info = whaleInfo, info.isZombie {
+                    zombiePreview
+                } else {
+                    entryPreview(ds: ds)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: (center && whaleInfo?.isZombie != true) ? .infinity : nil,
+                   alignment: (center && whaleInfo?.isZombie != true) ? .center : .topLeading)
             .padding(9 * zoom)
-            .frame(width: cardWidth, height: center ? cardHeight : nil)
+            .frame(width: cardWidth, height: (center || whaleInfo?.isZombie == true) ? cardHeight : nil)
             .background(
                 RoundedRectangle(cornerRadius: 10 * zoom)
                     .fill(fill)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10 * zoom)
-                    .stroke(Color.white, lineWidth: isSelected ? 3 * zoom : 0)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 10 * zoom))
+
+            if let info = whaleInfo, !info.isZombie, info.remainingDisplays > 0 {
+                WhalePieChart(remainingDisplays: info.remainingDisplays, size: 20 * zoom)
+                    .padding(6 * zoom)
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 10 * zoom)
+                .stroke(Color.white, lineWidth: isSelected ? 3 * zoom : 0)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10 * zoom))
     }
 
     @ViewBuilder
     private func entryPreview(ds: CardDisplayState) -> some View {
         if entry.isConcealed {
             concealedPreview
-        } else if entry.hasImage {
-            imagePreview
         } else if entry.hasFileURLs {
             mediaFilePreview
+        } else if entry.hasImage {
+            imagePreview
         } else if ds.isOnlyObjectReplacements, let attachData = ds.attachmentImageData {
             AnimatedDataImageView(data: attachData)
                 .clipShape(RoundedRectangle(cornerRadius: 4 * zoom))
@@ -267,6 +281,22 @@ struct ClipboardEntryRow: View {
         case .other:
             genericFilePreview
         }
+    }
+
+    private var zombiePreview: some View {
+        VStack(spacing: 6 * zoom) {
+            Image(systemName: "xmark.circle")
+                .font(.system(size: 24 * zoom))
+                .foregroundStyle(.red.opacity(0.8))
+            Text("Item removed \u{2014} over storage limit")
+                .font(.system(size: 13 * zoom, weight: .medium))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+            Text("Right-click to manage")
+                .font(.system(size: 11 * zoom))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
     private var concealedPreview: some View {

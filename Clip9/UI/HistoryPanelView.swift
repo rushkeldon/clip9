@@ -27,6 +27,8 @@ struct HistoryPanelView: View {
     let scrollState: ScrollState
     var onRestore: ((ClipboardEntry) -> Void)?
     var onDelete: ((ClipboardEntry) -> Void)?
+    var onIncreaseLimit: ((ClipboardEntry) -> Void)?
+    var onEvictForWhale: ((ClipboardEntry) -> Void)?
 
     @AppStorage("baseZoomLevel") private var baseZoomLevel = 1.0
 
@@ -94,11 +96,15 @@ struct HistoryPanelView: View {
                                 onRestore?(entry)
                             }
                             .contextMenu {
-                                Button {
-                                    log.info("UI", "Context menu → Copy: \(entry.id)", emoji: "📋")
-                                    onRestore?(entry)
-                                } label: {
-                                    Label("Copy", systemImage: "doc.on.doc")
+                                let isWhaleOrZombie = WhaleManager.shared.isWhale(entry.id)
+
+                                if !WhaleManager.shared.isZombie(entry.id) {
+                                    Button {
+                                        log.info("UI", "Context menu → Copy: \(entry.id)", emoji: "📋")
+                                        onRestore?(entry)
+                                    } label: {
+                                        Label("Copy", systemImage: "doc.on.doc")
+                                    }
                                 }
                                 Button(role: .destructive) {
                                     log.info("UI", "Context menu → Delete: \(entry.id)", emoji: "🗑️")
@@ -106,12 +112,17 @@ struct HistoryPanelView: View {
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
+
+                                if isWhaleOrZombie {
+                                    Divider()
+                                    whaleContextMenuItems(for: entry)
+                                }
                             }
                     }
                 }
                 .coordinateSpace(name: "cardStack")
                 .padding(panelPadding * baseZoomLevel)
-                .padding(.bottom, arrowZoneHeight)
+                .padding(.bottom, scrollState.canScrollDown ? arrowZoneHeight : 0)
                 .background(
                     GeometryReader { contentGeo in
                         Color.clear.preference(
@@ -139,7 +150,10 @@ struct HistoryPanelView: View {
                 scrollState.cardHeights = sorted.map { $0.height }
                 if let last = sorted.last {
                     let padding = panelPadding * baseZoomLevel
-                    scrollState.contentHeight = last.minY + last.height + padding + arrowZoneHeight
+                    let baseHeight = last.minY + last.height + padding
+                    scrollState.contentHeight = baseHeight > scrollState.viewHeight
+                        ? baseHeight + arrowZoneHeight
+                        : baseHeight
                 }
             }
             .onChange(of: scrollState.scrollTargetIndex) { _, index in
@@ -166,5 +180,37 @@ struct HistoryPanelView: View {
         }
         .frame(height: arrowZoneHeight)
         .background(.ultraThinMaterial)
+    }
+
+    @ViewBuilder
+    private func whaleContextMenuItems(for entry: ClipboardEntry) -> some View {
+        let softCapBytes = StorageManager.shared.storageCapBytes
+        let hardLimitBytes = WhaleManager.hardBackstopBytes(softCapBytes: softCapBytes)
+        let currentTotal = StorageManager.shared.currentStorageBytes
+        let historyIDs = monitor.history.map(\.id)
+
+        let suggestedCap = WhaleManager.shared.suggestedCapBytes(
+            for: entry.id,
+            historyOrder: historyIDs,
+            currentCapBytes: softCapBytes,
+            currentTotalBytes: currentTotal
+        ) ?? currentTotal
+
+        if suggestedCap <= hardLimitBytes {
+            let capGB = String(format: "%.1f", Double(suggestedCap) / 1_073_741_824)
+            Button {
+                log.info("UI", "Context menu → Increase cap to \(capGB) GB for whale \(entry.id)", emoji: "📈")
+                onIncreaseLimit?(entry)
+            } label: {
+                Label("Increase storage cap to \(capGB) GB", systemImage: "arrow.up.circle")
+            }
+        }
+
+        Button {
+            log.info("UI", "Context menu → Evict others for whale \(entry.id)", emoji: "🧹")
+            onEvictForWhale?(entry)
+        } label: {
+            Label("Delete other items to make room", systemImage: "arrow.uturn.backward")
+        }
     }
 }

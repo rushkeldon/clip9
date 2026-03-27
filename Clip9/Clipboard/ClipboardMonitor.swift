@@ -32,6 +32,9 @@ class ClipboardMonitor {
         }
         log.info("Clipboard", "Loaded \(history.count) entries from disk", emoji: "📚")
 
+        let validIDs = Set(history.map(\.id))
+        WhaleManager.shared.pruneOrphans(validIDs: validIDs)
+
         lastChangeCount = pasteboard.changeCount
         log.debug("Clipboard", "Initial changeCount=\(lastChangeCount)")
         pollTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -207,8 +210,50 @@ class ClipboardMonitor {
             history.removeLast(overflow)
             log.debug("Clipboard", "Evicted \(overflow) entry(s) from in-memory history (max=\(maxHistorySize))", emoji: "🗑️")
         }
+
+        guard WhaleManager.canFitOnDisk(bytes: entry.totalBytes) else {
+            log.warn("Clipboard", "Insufficient disk space to persist entry \(entry.id) (\(entry.totalBytes) bytes) — in-memory only")
+            DisplayStateCache.shared.warmIfNeeded(entry: entry)
+            return
+        }
+
+        let perItemTriggerBytes = (UserDefaults.standard.object(forKey: "perItemTriggerMB") as? Int ?? 500) * 1_048_576
+        let newTotal = StorageManager.shared.currentStorageBytes + entry.totalBytes
+        let softCap = StorageManager.shared.storageCapBytes
+        let isOversize = entry.totalBytes > perItemTriggerBytes
+        let isOverCap = newTotal > softCap
+        let hardLimit = WhaleManager.hardBackstopBytes(softCapBytes: softCap)
+
+        if isOversize && isOverCap {
+            WhaleManager.shared.registerWhale(entry.id)
+            log.info("Clipboard", "Whale detected: \(entry.id) (\(entry.totalBytes) bytes, total=\(newTotal), cap=\(softCap))", emoji: "🐋")
+        } else if isOverCap {
+            evictOldestNonWhales(targetBytes: softCap)
+        }
+
+        if newTotal > hardLimit {
+            log.info("Clipboard", "Over hard backstop (\(hardLimit) bytes) — aggressive eviction", emoji: "🚨")
+            evictOldestNonWhales(targetBytes: hardLimit)
+        }
+
         StorageManager.shared.save(entry)
         DisplayStateCache.shared.warmIfNeeded(entry: entry)
+    }
+
+    /// FIFO-evict oldest non-whale entries until total storage is under the target.
+    func evictOldestNonWhales(targetBytes: Int) {
+        let whaleIDs = WhaleManager.shared.whaleIDs
+        var evictedCount = 0
+        while StorageManager.shared.currentStorageBytes > targetBytes, history.count > 1 {
+            guard let index = history.lastIndex(where: { !whaleIDs.contains($0.id) }) else { break }
+            let victim = history.remove(at: index)
+            StorageManager.shared.deleteEntry(uuidString: victim.id.uuidString)
+            DisplayStateCache.shared.remove(id: victim.id)
+            evictedCount += 1
+        }
+        if evictedCount > 0 {
+            log.info("Clipboard", "FIFO evicted \(evictedCount) non-whale entry(s) to fit under storage cap", emoji: "🧹")
+        }
     }
 
     // MARK: - Restore
@@ -261,12 +306,11 @@ class ClipboardMonitor {
         history.remove(at: index)
         StorageManager.shared.deleteEntry(uuidString: entry.id.uuidString)
         DisplayStateCache.shared.remove(id: entry.id)
+        WhaleManager.shared.removeWhale(entry.id)
         log.info("Clipboard", "Deleted entry \(entry.id) from position \(index)", emoji: "🗑️")
     }
 
     // MARK: - File Data Fetch
-
-    private static let maxFileFetchBytes = 200_000_000 // 200 MB
 
     /// If the item contains a public.file-url, read the file and store its bytes
     /// under the native UTI so the entry is self-contained after sandbox access expires.
@@ -288,10 +332,6 @@ class ClipboardMonitor {
             log.warn("Clipboard", "Failed to read file: \(url.lastPathComponent)")
             return
         }
-        guard fileData.count <= maxFileFetchBytes else {
-            log.info("Clipboard", "Skipping file fetch — \(url.lastPathComponent) exceeds \(maxFileFetchBytes / 1_000_000)MB cap (\(fileData.count) bytes)")
-            return
-        }
 
         dataByType[fileType] = fileData
         types.append(fileType)
@@ -305,6 +345,9 @@ class ClipboardMonitor {
         history.removeAll()
         StorageManager.shared.deleteAllEntries()
         DisplayStateCache.shared.removeAll()
+        for id in WhaleManager.shared.whaleIDs {
+            WhaleManager.shared.removeWhale(id)
+        }
         log.info("Clipboard", "History cleared (\(count) entries removed)", emoji: "🗑️")
     }
 
